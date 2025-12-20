@@ -131,6 +131,16 @@ def init_db():
     conn.close()
 
 
+def safe_int(value, default=0):
+    """Safely convert value to int"""
+    if value is None or value == '':
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def migrate_csv_to_db():
     """Migrate data from CSV to SQLite"""
     csv_path = Path(__file__).parent / CSV_FILE
@@ -164,7 +174,7 @@ def migrate_csv_to_db():
         ''', (
             row.get('id', ''), row.get('type', ''), row.get('period', ''),
             row.get('figure_num', ''), str(row.get('page_num', '')), row.get('pottery_id', ''),
-            row.get('caption_text', ''), row.get('position', ''), int(row.get('rotation', 0) or 0),
+            row.get('caption_text', ''), row.get('position', ''), safe_int(row.get('rotation', 0)),
             row.get('folder', ''), row.get('image_path', ''), row.get('page_ref', ''),
             row.get('collection', ''), row.get('source_pdf', ''), row.get('decoration', ''),
             row.get('part_type', ''), row.get('vessel_type', ''), row.get('macro_period', '')
