@@ -1516,7 +1516,124 @@ def get_viewer_html(role):
         }}
         .autocomplete-item:hover {{ background: rgba(79,195,247,0.2); }}
         .autocomplete-item .count {{ color: #888; font-size: 0.8em; margin-left: 8px; }}
+
+        /* PDF Viewer Modal */
+        .pdf-modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            flex-direction: column;
+        }}
+        .pdf-modal.active {{ display: flex; }}
+        .pdf-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: #1a1a2e;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }}
+        .pdf-title {{
+            color: #4fc3f7;
+            font-size: 1em;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }}
+        .pdf-title .page-info {{
+            background: rgba(79, 195, 247, 0.2);
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+        }}
+        .pdf-controls {{
+            display: flex;
+            gap: 8px;
+        }}
+        .pdf-ctrl-btn {{
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }}
+        .pdf-ctrl-btn:hover {{ background: rgba(255,255,255,0.2); }}
+        .pdf-ctrl-btn.primary {{ background: #4caf50; }}
+        .pdf-ctrl-btn.close {{ background: #f44336; }}
+        .pdf-container {{
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            padding: 20px;
+        }}
+        .pdf-canvas-wrapper {{
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            background: white;
+        }}
+        #pdfCanvas {{
+            display: block;
+            max-width: 100%;
+            max-height: calc(100vh - 100px);
+        }}
+        .pdf-loading {{
+            color: #4fc3f7;
+            font-size: 1.2em;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }}
+        .pdf-loading .spinner {{
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(79, 195, 247, 0.2);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+        .highlight-overlay {{
+            position: absolute;
+            background: rgba(255, 255, 0, 0.4);
+            pointer-events: none;
+            border: 2px solid #ffc107;
+            border-radius: 3px;
+            animation: pulse-highlight 1.5s ease-in-out infinite;
+        }}
+        @keyframes pulse-highlight {{
+            0%, 100% {{ opacity: 0.4; }}
+            50% {{ opacity: 0.7; }}
+        }}
+        .pdf-nav {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .pdf-nav-btn {{
+            background: rgba(79, 195, 247, 0.2);
+            border: none;
+            color: #4fc3f7;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            transition: all 0.2s;
+        }}
+        .pdf-nav-btn:hover {{ background: rgba(79, 195, 247, 0.4); }}
+        .pdf-nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
     <div class="header">
@@ -1677,6 +1794,36 @@ def get_viewer_html(role):
             <div class="modal-buttons">
                 <button class="modal-btn cancel" onclick="closeModal('batchEditModal')">Cancel</button>
                 <button class="modal-btn confirm" onclick="saveBatchEdit()">Save All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF Viewer Modal -->
+    <div class="pdf-modal" id="pdfModal">
+        <div class="pdf-header">
+            <div class="pdf-title">
+                <span id="pdfFileName">PDF Viewer</span>
+                <span class="page-info">Page <span id="pdfCurrentPage">1</span> / <span id="pdfTotalPages">?</span></span>
+            </div>
+            <div class="pdf-controls">
+                <div class="pdf-nav">
+                    <button class="pdf-nav-btn" onclick="pdfGoToPage(-1)" id="pdfPrevBtn">&#8249;</button>
+                    <button class="pdf-nav-btn" onclick="pdfGoToPage(1)" id="pdfNextBtn">&#8250;</button>
+                </div>
+                <button class="pdf-ctrl-btn" onclick="pdfZoom(-0.25)">&#8722; Zoom</button>
+                <button class="pdf-ctrl-btn" onclick="pdfZoom(0.25)">&#43; Zoom</button>
+                <button class="pdf-ctrl-btn primary" onclick="downloadPdfPage()">&#8681; Save Page</button>
+                <button class="pdf-ctrl-btn" onclick="openFullPdf()">&#8599; Open Full PDF</button>
+                <button class="pdf-ctrl-btn close" onclick="closePdfModal()">&#10005; Close</button>
+            </div>
+        </div>
+        <div class="pdf-container" id="pdfContainer">
+            <div class="pdf-loading" id="pdfLoading">
+                <div class="spinner"></div>
+                <span>Loading PDF page...</span>
+            </div>
+            <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper" style="display:none;">
+                <canvas id="pdfCanvas"></canvas>
             </div>
         </div>
     </div>
@@ -2023,6 +2170,18 @@ def get_viewer_html(role):
             .catch(err => alert('Error: ' + err));
         }}
 
+        // PDF Viewer with PDF.js
+        let pdfDoc = null;
+        let pdfPageNum = 1;
+        let pdfScale = 1.5;
+        let pdfPath = '';
+        let pdfSearchText = '';
+
+        // Initialize PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {{
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }}
+
         function openPdfAtPage(pageRef, collection) {{
             const item = filteredData[currentIndex];
             const page = pageRef || item?.page_ref || '1';
@@ -2030,18 +2189,136 @@ def get_viewer_html(role):
 
             // Extract page number from reference
             const pageMatch = page.match(/p+\\.?\\s*(\\d+)/i);
-            const pageNum = pageMatch ? pageMatch[1] : '1';
+            const pageNum = parseInt(pageMatch ? pageMatch[1] : '1');
+
+            // Get search text for highlighting (figure number or pottery ID)
+            pdfSearchText = item?.figure_num || item?.pottery_id || item?.id || '';
 
             // Get PDF path from config
-            const pdfPath = config.collections?.[coll]?.pdf;
-            if (pdfPath) {{
-                // Open PDF directly with page fragment (no popup blocker issue)
-                const pdfUrl = '/' + pdfPath + '#page=' + pageNum;
-                window.open(pdfUrl, '_blank');
-            }} else {{
+            pdfPath = config.collections?.[coll]?.pdf;
+            if (!pdfPath) {{
                 alert('PDF not configured for this collection');
+                return;
+            }}
+
+            // Show modal and load PDF
+            document.getElementById('pdfModal').classList.add('active');
+            document.getElementById('pdfFileName').textContent = pdfPath.split('/').pop();
+            document.getElementById('pdfLoading').style.display = 'flex';
+            document.getElementById('pdfCanvasWrapper').style.display = 'none';
+
+            loadPdf('/' + pdfPath, pageNum);
+        }}
+
+        async function loadPdf(url, targetPage) {{
+            try {{
+                pdfDoc = await pdfjsLib.getDocument(url).promise;
+                pdfPageNum = Math.min(Math.max(1, targetPage), pdfDoc.numPages);
+                document.getElementById('pdfTotalPages').textContent = pdfDoc.numPages;
+                await renderPdfPage();
+            }} catch (err) {{
+                console.error('PDF load error:', err);
+                document.getElementById('pdfLoading').innerHTML =
+                    '<span style="color:#f44336;">Error loading PDF: ' + err.message + '</span>';
             }}
         }}
+
+        async function renderPdfPage() {{
+            if (!pdfDoc) return;
+
+            const page = await pdfDoc.getPage(pdfPageNum);
+            const viewport = page.getViewport({{ scale: pdfScale }});
+            const canvas = document.getElementById('pdfCanvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            await page.render({{
+                canvasContext: ctx,
+                viewport: viewport
+            }}).promise;
+
+            document.getElementById('pdfCurrentPage').textContent = pdfPageNum;
+            document.getElementById('pdfLoading').style.display = 'none';
+            document.getElementById('pdfCanvasWrapper').style.display = 'block';
+
+            // Update navigation buttons
+            document.getElementById('pdfPrevBtn').disabled = (pdfPageNum <= 1);
+            document.getElementById('pdfNextBtn').disabled = (pdfPageNum >= pdfDoc.numPages);
+
+            // Try to find and highlight text
+            if (pdfSearchText) {{
+                highlightTextOnPage(page, viewport);
+            }}
+        }}
+
+        async function highlightTextOnPage(page, viewport) {{
+            try {{
+                const textContent = await page.getTextContent();
+                const wrapper = document.getElementById('pdfCanvasWrapper');
+
+                // Remove old highlights
+                wrapper.querySelectorAll('.highlight-overlay').forEach(el => el.remove());
+
+                const searchLower = pdfSearchText.toLowerCase();
+                textContent.items.forEach(item => {{
+                    if (item.str.toLowerCase().includes(searchLower)) {{
+                        const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+                        const highlight = document.createElement('div');
+                        highlight.className = 'highlight-overlay';
+                        highlight.style.left = tx[4] + 'px';
+                        highlight.style.top = (viewport.height - tx[5] - item.height * pdfScale) + 'px';
+                        highlight.style.width = (item.width * pdfScale) + 'px';
+                        highlight.style.height = (item.height * pdfScale + 5) + 'px';
+                        wrapper.appendChild(highlight);
+                    }}
+                }});
+            }} catch (e) {{
+                console.log('Text highlight not available:', e);
+            }}
+        }}
+
+        function pdfGoToPage(delta) {{
+            const newPage = pdfPageNum + delta;
+            if (newPage >= 1 && newPage <= pdfDoc.numPages) {{
+                pdfPageNum = newPage;
+                document.getElementById('pdfLoading').style.display = 'flex';
+                document.getElementById('pdfCanvasWrapper').style.display = 'none';
+                renderPdfPage();
+            }}
+        }}
+
+        function pdfZoom(delta) {{
+            pdfScale = Math.max(0.5, Math.min(3, pdfScale + delta));
+            renderPdfPage();
+        }}
+
+        function downloadPdfPage() {{
+            const canvas = document.getElementById('pdfCanvas');
+            const link = document.createElement('a');
+            link.download = `page_${{pdfPageNum}}_${{pdfSearchText || 'export'}}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }}
+
+        function openFullPdf() {{
+            if (pdfPath) {{
+                window.open('/' + pdfPath + '#page=' + pdfPageNum, '_blank');
+            }}
+        }}
+
+        function closePdfModal() {{
+            document.getElementById('pdfModal').classList.remove('active');
+            pdfDoc = null;
+        }}
+
+        // Close PDF modal on Escape
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape' && document.getElementById('pdfModal').classList.contains('active')) {{
+                closePdfModal();
+            }}
+        }});
 
         function openEditModal() {{
             if (!isAdmin || filteredData.length === 0) return;
