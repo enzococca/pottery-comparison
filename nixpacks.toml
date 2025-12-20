@@ -1,13 +1,5 @@
-[phases.setup]
-nixPkgs = ["git-lfs", "git"]
-
 [phases.install]
-cmds = [
-    "git lfs install --skip-repo",
-    "git lfs fetch --all",
-    "git lfs checkout",
-    "pip install -r requirements.txt"
-]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
 cmd = "python viewer_app.py"
