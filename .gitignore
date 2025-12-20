@@ -18,3 +18,7 @@ CLAUDE.md
 *.tmp
 *.bak
 ~$*
+
+# Generated files
+index.html
+ceramica.db
