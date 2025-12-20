@@ -630,21 +630,34 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if parsed.path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
             try:
                 return self.serve_static_with_cache(parsed.path, 'image', max_age=86400)  # 1 day
-            except:
+            except Exception as e:
+                print(f"Error serving image {parsed.path}: {e}")
                 pass
         elif parsed.path.endswith('.pdf'):
             try:
                 return self.serve_static_with_cache(parsed.path, 'pdf', max_age=604800)  # 1 week
-            except:
+            except Exception as e:
+                print(f"Error serving PDF {parsed.path}: {e}")
+                # Check if it's an LFS pointer file issue
+                file_path = Path(__file__).parent / parsed.path.lstrip('/')
+                if file_path.exists():
+                    with open(file_path, 'rb') as f:
+                        header = f.read(100)
+                        if b'version https://git-lfs.github.com' in header:
+                            self.send_error(503, "PDF files not available - Git LFS not configured on server")
+                            return
                 pass
 
         return SimpleHTTPRequestHandler.do_GET(self)
 
     def serve_static_with_cache(self, path, file_type, max_age=86400):
         """Serve static files with cache headers"""
-        file_path = Path(__file__).parent / path.lstrip('/')
+        # URL decode path (handle %20 for spaces, etc.)
+        decoded_path = urllib.parse.unquote(path.lstrip('/'))
+        file_path = Path(__file__).parent / decoded_path
         if not file_path.exists():
-            self.send_error(404, "File not found")
+            print(f"File not found: {file_path}")
+            self.send_error(404, f"File not found: {decoded_path}")
             return
 
         # Determine content type
