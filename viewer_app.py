@@ -4384,13 +4384,16 @@ def get_viewer_html(role):
                 }}))
             }});
 
-            fetch('/api/v1/items/' + item.id, {{
-                method: 'PUT',
+            fetch('/api/update-item', {{
+                method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{
-                    calibration_data: calibrationData,
-                    larghezza_cm: width ? width.toFixed(2) : item.larghezza_cm,
-                    altezza_cm: height ? height.toFixed(2) : item.altezza_cm
+                    id: item.id,
+                    fields: {{
+                        calibration_data: calibrationData,
+                        larghezza_cm: width ? parseFloat(width.toFixed(2)) : null,
+                        altezza_cm: height ? parseFloat(height.toFixed(2)) : null
+                    }}
                 }})
             }})
             .then(r => r.json())
@@ -4437,10 +4440,13 @@ def get_viewer_html(role):
                         // Ask user to confirm
                         if (confirm('Found scale: ' + firstScale + '\\n\\nApply this scale to the current item?')) {{
                             // Save scale to item
-                            fetch('/api/v1/items/' + item.id, {{
-                                method: 'PUT',
+                            fetch('/api/update-item', {{
+                                method: 'POST',
                                 headers: {{ 'Content-Type': 'application/json' }},
-                                body: JSON.stringify({{ scala_metrica: firstScale }})
+                                body: JSON.stringify({{
+                                    id: item.id,
+                                    fields: {{ scala_metrica: firstScale }}
+                                }})
                             }})
                             .then(r => r.json())
                             .then(res => {{
