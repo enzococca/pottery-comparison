@@ -1364,6 +1364,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         # 3D Reconstruction endpoint
         if parsed.path == '/api/3d/reconstruct':
             image_path = post_data.get('image_path', '')
+            with_decoration = post_data.get('with_decoration', True)
+
             if not image_path:
                 self.send_json({'error': 'No image path provided'}, 400)
                 return
@@ -1377,20 +1379,28 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
             try:
                 from vessel_3d_reconstruction import reconstruct_vessel
-                result = reconstruct_vessel(full_path, debug=False)
+                result = reconstruct_vessel(full_path, debug=False, with_decoration=with_decoration)
 
                 if result and result.get('glb_path'):
                     # Read GLB file and encode as base64
                     with open(result['glb_path'], 'rb') as f:
                         glb_data = base64.b64encode(f.read()).decode('utf-8')
 
-                    self.send_json({
+                    response = {
                         'success': True,
                         'glb_data': glb_data,
                         'vertices': len(result['mesh']['vertices']),
                         'faces': len(result['mesh']['faces']),
                         'profile_points': result['mesh']['profile_points']
-                    })
+                    }
+
+                    # Include textured GLB if available
+                    if result.get('glb_textured_path') and os.path.exists(result['glb_textured_path']):
+                        with open(result['glb_textured_path'], 'rb') as f:
+                            response['glb_textured_data'] = base64.b64encode(f.read()).decode('utf-8')
+                        response['has_decoration'] = result.get('decoration', {}).get('has_decoration', False)
+
+                    self.send_json(response)
                 else:
                     self.send_json({'error': 'Failed to extract profile from image'}, 400)
             except Exception as e:
@@ -2861,6 +2871,7 @@ def get_viewer_html(role):
                 <span class="viewer3d-info" id="viewer3dInfo"></span>
             </div>
             <div class="viewer3d-controls">
+                <button class="viewer3d-btn" id="toggleDecorationBtn" onclick="toggleDecoration()" style="display:none;">&#127912; Plain</button>
                 <button class="viewer3d-btn" onclick="reset3DView()">&#8635; Reset View</button>
                 <button class="viewer3d-btn" onclick="download3D()">&#8595; Download GLB</button>
                 <button class="viewer3d-btn close" onclick="close3DViewer()">&#10005; Close</button>
@@ -4623,6 +4634,8 @@ def get_viewer_html(role):
         let viewer3dScene, viewer3dCamera, viewer3dRenderer, viewer3dControls;
         let viewer3dModel = null;
         let viewer3dGlbData = null;
+        let viewer3dGlbTexturedData = null;
+        let viewer3dShowTextured = true;
 
         function open3DViewer() {{
             if (!currentItem) {{
@@ -4636,13 +4649,14 @@ def get_viewer_html(role):
 
             modal.classList.add('active');
             loading.style.display = 'block';
+            loading.innerHTML = '<div class="spinner"></div><p>Generating 3D model...</p>';
             info.textContent = 'Processing ' + currentItem.id + '...';
 
             // Request 3D reconstruction
             fetch('/api/3d/reconstruct', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ image_path: currentItem.image_path }})
+                body: JSON.stringify({{ image_path: currentItem.image_path, with_decoration: true }})
             }})
             .then(r => r.json())
             .then(data => {{
@@ -4652,15 +4666,38 @@ def get_viewer_html(role):
                 }}
 
                 viewer3dGlbData = data.glb_data;
-                info.textContent = data.vertices.toLocaleString() + ' vertices, ' + data.faces.toLocaleString() + ' faces';
+                viewer3dGlbTexturedData = data.glb_textured_data || null;
+
+                let infoText = data.vertices.toLocaleString() + ' vertices, ' + data.faces.toLocaleString() + ' faces';
+                if (data.has_decoration) {{
+                    infoText += ' | Decoration detected';
+                }}
+                info.textContent = infoText;
                 loading.style.display = 'none';
 
+                // Show/hide decoration toggle button
+                const toggleBtn = document.getElementById('toggleDecorationBtn');
+                if (toggleBtn) {{
+                    toggleBtn.style.display = viewer3dGlbTexturedData ? 'inline-block' : 'none';
+                }}
+
                 init3DViewer();
-                load3DModel(data.glb_data);
+                load3DModel(viewer3dShowTextured && viewer3dGlbTexturedData ? viewer3dGlbTexturedData : viewer3dGlbData);
             }})
             .catch(err => {{
                 loading.innerHTML = '<p style="color:#ff6b6b;">&#9888; ' + err + '</p>';
             }});
+        }}
+
+        function toggleDecoration() {{
+            viewer3dShowTextured = !viewer3dShowTextured;
+            const btn = document.getElementById('toggleDecorationBtn');
+            if (btn) {{
+                btn.textContent = viewer3dShowTextured ? '&#127912; Plain' : '&#127912; Decorated';
+            }}
+            if (viewer3dScene) {{
+                load3DModel(viewer3dShowTextured && viewer3dGlbTexturedData ? viewer3dGlbTexturedData : viewer3dGlbData);
+            }}
         }}
 
         function init3DViewer() {{

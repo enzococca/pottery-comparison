@@ -370,7 +370,198 @@ def export_glb(mesh_data, filename):
     return filename
 
 
-def reconstruct_vessel(image_path, output_dir=None, debug=False):
+def extract_decoration(image_path, profile_data, debug=False):
+    """
+    Extract decoration pattern from the vessel drawing.
+    In archaeological drawings, the right half typically shows
+    the exterior surface with decorations.
+
+    Returns: dict with texture data
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+
+    height, width = img.shape[:2]
+    x, y, w, h = profile_data['bbox']
+    center_x = profile_data['center_x']
+
+    # The decoration is on the right side of the center line
+    dec_x1 = center_x
+    dec_x2 = min(x + w + 20, width)
+    dec_y1 = max(y - 10, 0)
+    dec_y2 = min(y + h + 10, height)
+
+    # Extract right half (decoration side)
+    decoration_region = img[dec_y1:dec_y2, dec_x1:dec_x2].copy()
+
+    if decoration_region.size == 0:
+        return None
+
+    # Create texture by mirroring for cylindrical mapping
+    # Flip horizontally and concatenate for full cylinder
+    dec_flipped = cv2.flip(decoration_region, 1)
+    texture = np.hstack([decoration_region, dec_flipped])
+
+    # Enhance decoration visibility
+    gray = cv2.cvtColor(texture, cv2.COLOR_BGR2GRAY)
+
+    # Detect decorative patterns (lines, hatching, etc.)
+    edges = cv2.Canny(gray, 30, 100)
+
+    # Find contours that might be decorations
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    has_decoration = len([c for c in contours if cv2.contourArea(c) > 50]) > 5
+
+    # Create a clean texture for 3D
+    # Invert colors (black lines on white -> dark texture with light lines)
+    texture_clean = cv2.bitwise_not(gray)
+
+    # Apply ceramic color tint
+    ceramic_color = np.array([108, 160, 201])  # BGR for terracotta-like
+    texture_colored = np.zeros_like(texture)
+    for i in range(3):
+        texture_colored[:, :, i] = ((255 - texture_clean) / 255.0 * ceramic_color[i] +
+                                    (texture_clean / 255.0 * 80)).astype(np.uint8)
+
+    if debug:
+        cv2.imwrite('/tmp/decoration_region.png', decoration_region)
+        cv2.imwrite('/tmp/decoration_texture.png', texture_colored)
+
+    return {
+        'texture': texture_colored,
+        'has_decoration': has_decoration,
+        'width': texture_colored.shape[1],
+        'height': texture_colored.shape[0]
+    }
+
+
+def export_glb_with_texture(mesh_data, texture_data, filename):
+    """Export mesh to GLB format with texture."""
+    try:
+        import struct
+    except:
+        return None
+
+    vertices = np.array(mesh_data['vertices'], dtype=np.float32)
+    faces = np.array(mesh_data['faces'], dtype=np.uint32)
+    uvs = np.array(mesh_data['uvs'], dtype=np.float32) if mesh_data.get('uvs') else None
+
+    # Encode texture as PNG
+    _, png_data = cv2.imencode('.png', texture_data['texture'])
+    png_bytes = png_data.tobytes()
+
+    # Pad to 4-byte alignment
+    png_padding = (4 - len(png_bytes) % 4) % 4
+    png_bytes_padded = png_bytes + b'\x00' * png_padding
+
+    # Build buffer with vertices, faces, UVs, and image
+    buffer_data = vertices.tobytes() + faces.tobytes()
+    uv_offset = len(buffer_data)
+
+    if uvs is not None:
+        buffer_data += uvs.tobytes()
+
+    image_offset = len(buffer_data)
+    buffer_data += png_bytes_padded
+
+    # Pad buffer to 4-byte alignment
+    while len(buffer_data) % 4 != 0:
+        buffer_data += b'\x00'
+
+    # Create glTF JSON
+    gltf = {
+        "asset": {"version": "2.0", "generator": "VesselReconstruction"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0}],
+        "meshes": [{
+            "primitives": [{
+                "attributes": {"POSITION": 0},
+                "indices": 1,
+                "mode": 4,
+                "material": 0
+            }]
+        }],
+        "materials": [{
+            "pbrMetallicRoughness": {
+                "baseColorTexture": {"index": 0},
+                "metallicFactor": 0.1,
+                "roughnessFactor": 0.7
+            }
+        }],
+        "textures": [{"sampler": 0, "source": 0}],
+        "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 33071}],
+        "images": [{"bufferView": 3, "mimeType": "image/png"}],
+        "accessors": [
+            {  # Positions
+                "bufferView": 0,
+                "componentType": 5126,
+                "count": len(vertices),
+                "type": "VEC3",
+                "min": vertices.min(axis=0).tolist(),
+                "max": vertices.max(axis=0).tolist()
+            },
+            {  # Indices
+                "bufferView": 1,
+                "componentType": 5125,
+                "count": len(faces) * 3,
+                "type": "SCALAR"
+            }
+        ],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": vertices.nbytes},
+            {"buffer": 0, "byteOffset": vertices.nbytes, "byteLength": faces.nbytes},
+            {"buffer": 0, "byteOffset": image_offset, "byteLength": len(png_bytes)}
+        ],
+        "buffers": [{"byteLength": len(buffer_data)}]
+    }
+
+    # Add UVs if available
+    if uvs is not None:
+        gltf["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_0"] = 2
+        gltf["accessors"].append({
+            "bufferView": 2,
+            "componentType": 5126,
+            "count": len(uvs),
+            "type": "VEC2"
+        })
+        gltf["bufferViews"].insert(2, {
+            "buffer": 0,
+            "byteOffset": uv_offset,
+            "byteLength": uvs.nbytes
+        })
+        # Update image bufferView index
+        gltf["images"][0]["bufferView"] = 3
+
+    json_str = json.dumps(gltf)
+    while len(json_str) % 4 != 0:
+        json_str += ' '
+    json_bytes = json_str.encode('utf-8')
+
+    # GLB header
+    glb_data = b'glTF'
+    glb_data += struct.pack('<I', 2)
+    glb_data += struct.pack('<I', 12 + 8 + len(json_bytes) + 8 + len(buffer_data))
+
+    # JSON chunk
+    glb_data += struct.pack('<I', len(json_bytes))
+    glb_data += b'JSON'
+    glb_data += json_bytes
+
+    # Binary chunk
+    glb_data += struct.pack('<I', len(buffer_data))
+    glb_data += b'BIN\x00'
+    glb_data += buffer_data
+
+    with open(filename, 'wb') as f:
+        f.write(glb_data)
+
+    return filename
+
+
+def reconstruct_vessel(image_path, output_dir=None, debug=False, with_decoration=True):
     """
     Main function to reconstruct a 3D vessel from a profile drawing.
 
@@ -406,8 +597,30 @@ def reconstruct_vessel(image_path, output_dir=None, debug=False):
     export_obj(mesh, obj_path)
     print(f"  Exported OBJ: {obj_path}")
 
-    # Export to GLB
+    # Try to extract decoration
+    decoration = None
+    if with_decoration:
+        print("Extracting decoration...")
+        decoration = extract_decoration(image_path, profile, debug=debug)
+        if decoration:
+            print(f"  Decoration: {decoration['width']}x{decoration['height']}, has_decoration={decoration['has_decoration']}")
+        else:
+            print("  No decoration extracted")
+
+    # Export to GLB (with or without texture)
     glb_path = os.path.join(output_dir, f"{base_name}.glb")
+    if decoration and decoration.get('texture') is not None:
+        glb_textured_path = os.path.join(output_dir, f"{base_name}_textured.glb")
+        try:
+            export_glb_with_texture(mesh, decoration, glb_textured_path)
+            print(f"  Exported textured GLB: {glb_textured_path}")
+        except Exception as e:
+            print(f"  Failed to export textured GLB: {e}")
+            glb_textured_path = None
+    else:
+        glb_textured_path = None
+
+    # Also export basic GLB
     export_glb(mesh, glb_path)
     print(f"  Exported GLB: {glb_path}")
 
@@ -415,7 +628,9 @@ def reconstruct_vessel(image_path, output_dir=None, debug=False):
         'profile': profile,
         'mesh': mesh,
         'obj_path': obj_path,
-        'glb_path': glb_path
+        'glb_path': glb_path,
+        'glb_textured_path': glb_textured_path,
+        'decoration': decoration
     }
 
 
