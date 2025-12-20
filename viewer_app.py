@@ -1616,14 +1616,23 @@ def get_viewer_html(role):
         function initializeFilters(vocab, periods) {{
             // Populate period filter
             const periodSelect = document.getElementById('filterPeriod');
-            periods.forEach(p => {{
-                periodSelect.innerHTML += `<option value="${{p}}">${{p.substring(0,40)}}</option>`;
-            }});
+            if (periodSelect) {{
+                periods.forEach(p => {{
+                    periodSelect.innerHTML += `<option value="${{p}}">${{p.substring(0,40)}}</option>`;
+                }});
+            }}
+
+            // Map field names to filter element IDs
+            const filterMap = {{
+                'decoration': 'filterDecoration',
+                'vessel_type': 'filterVesselType',
+                'part_type': 'filterPartType'
+            }};
 
             // Populate other filters from vocabulary
-            ['decoration', 'vessel_type', 'part_type'].forEach(field => {{
-                const select = document.getElementById('filter' + field.charAt(0).toUpperCase() + field.slice(1).replace('_', ''));
-                if (vocab[field]) {{
+            Object.entries(filterMap).forEach(([field, filterId]) => {{
+                const select = document.getElementById(filterId);
+                if (select && vocab[field]) {{
                     vocab[field].forEach(v => {{
                         select.innerHTML += `<option value="${{v.value}}">${{v.value}}</option>`;
                     }});
