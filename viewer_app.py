@@ -546,12 +546,38 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(items)
             return
 
-        # Open PDF (authenticated, macOS only)
+        # Get PDF URL for cross-platform viewing
+        if parsed.path.startswith('/api/pdf-url'):
+            page = query.get('page', ['1'])[0]
+            collection = query.get('collection', [''])[0]
+
+            # Extract page number from various formats
+            page_match = re.search(r'p+\.?\s*(\d+)', page)
+            page_num = page_match.group(1) if page_match else '1'
+
+            config = load_config()
+            pdf_path = config.get('collections', {}).get(collection, {}).get('pdf', '')
+
+            if pdf_path:
+                # Check if PDF exists
+                base_path = Path(__file__).parent
+                full_pdf_path = base_path / pdf_path
+                if full_pdf_path.exists():
+                    # Return URL with page fragment for browser PDF viewer
+                    pdf_url = f'/{pdf_path}#page={page_num}'
+                    self.send_json({'success': True, 'url': pdf_url, 'page': page_num})
+                else:
+                    self.send_json({'error': 'PDF file not found', 'path': pdf_path})
+            else:
+                self.send_json({'error': 'No PDF configured for this collection'})
+            return
+
+        # Legacy endpoint for local macOS use
         if parsed.path.startswith('/api/open-pdf'):
             page = query.get('page', ['1'])[0]
             collection = query.get('collection', [''])[0]
 
-            page_match = re.search(r'p+\.\s*(\d+)', page)
+            page_match = re.search(r'p+\.?\s*(\d+)', page)
             page_num = page_match.group(1) if page_match else '1'
 
             if sys.platform == 'darwin':
@@ -576,11 +602,18 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     end tell
                     '''
                     subprocess.run(['osascript', '-e', script], check=False)
-                    self.send_json({'success': True, 'page': page_num})
+                    self.send_json({'success': True, 'page': page_num, 'method': 'local'})
                 else:
                     self.send_json({'error': 'PDF not found'})
             else:
-                self.send_json({'error': 'Not supported on this platform'})
+                # On non-macOS, redirect to browser-based viewing
+                config = load_config()
+                pdf_path = config.get('collections', {}).get(collection, {}).get('pdf', '')
+                if pdf_path:
+                    pdf_url = f'/{pdf_path}#page={page_num}'
+                    self.send_json({'success': True, 'url': pdf_url, 'page': page_num, 'method': 'browser'})
+                else:
+                    self.send_json({'error': 'PDF not found'})
             return
 
         # Serve static files
@@ -1839,7 +1872,19 @@ def get_viewer_html(role):
             const item = filteredData[currentIndex];
             const page = pageRef || item?.page_ref || '1';
             const coll = collection || item?.collection || '';
-            fetch(`/api/open-pdf?page=${{encodeURIComponent(page)}}&collection=${{encodeURIComponent(coll)}}`);
+
+            // Use browser-based PDF viewing (cross-platform)
+            fetch(`/api/pdf-url?page=${{encodeURIComponent(page)}}&collection=${{encodeURIComponent(coll)}}`)
+                .then(r => r.json())
+                .then(result => {{
+                    if (result.success && result.url) {{
+                        // Open PDF in new tab with page navigation
+                        window.open(result.url, '_blank');
+                    }} else if (result.error) {{
+                        alert('PDF Error: ' + result.error);
+                    }}
+                }})
+                .catch(err => console.error('PDF error:', err));
         }}
 
         function openEditModal() {{

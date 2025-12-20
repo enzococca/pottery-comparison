@@ -1,6 +1,3 @@
-# PDFs (too large for GitHub)
-PDFs/
-
 # System files
 .DS_Store
 *.pyc
