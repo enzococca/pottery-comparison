@@ -2475,6 +2475,35 @@ def get_viewer_html(role):
                         <div class="autocomplete-list" id="periodList"></div>
                     </div>
                 </div>
+                <div class="edit-row">
+                    <label>Decorative Motif:</label>
+                    <div class="autocomplete-wrapper">
+                        <input type="text" id="editMotivoDecorativo" placeholder="e.g., wavy lines, geometric...">
+                        <div class="autocomplete-list" id="motivoDecorativoList"></div>
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <label>Decorative Syntax:</label>
+                    <div class="autocomplete-wrapper">
+                        <input type="text" id="editSintassiDecorativa" placeholder="e.g., rim band, shoulder...">
+                        <div class="autocomplete-list" id="sintassiDecorativaList"></div>
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <label>Scale:</label>
+                    <div class="autocomplete-wrapper">
+                        <input type="text" id="editScalaMetrica" placeholder="e.g., 1:3">
+                        <div class="autocomplete-list" id="scalaMetricaList"></div>
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <label>Width (cm):</label>
+                    <input type="number" id="editLarghezzaCm" placeholder="Actual width" step="0.1" style="flex:1;padding:8px;border-radius:5px;border:1px solid #444;background:#333;color:#fff;">
+                </div>
+                <div class="edit-row">
+                    <label>Height (cm):</label>
+                    <input type="number" id="editAltezzaCm" placeholder="Actual height" step="0.1" style="flex:1;padding:8px;border-radius:5px;border:1px solid #444;background:#333;color:#fff;">
+                </div>
             </div>
             <div class="modal-buttons">
                 <button class="modal-btn cancel" onclick="closeModal('editModal')">Cancel</button>
@@ -2894,10 +2923,15 @@ def get_viewer_html(role):
                 {{ key: 'id', label: 'ID' }},
                 {{ key: 'collection', label: 'Collection' }},
                 {{ key: 'decoration', label: 'Decoration', class: 'decoration' }},
+                {{ key: 'motivo_decorativo', label: 'Decorative Motif' }},
+                {{ key: 'sintassi_decorativa', label: 'Decorative Syntax' }},
                 {{ key: 'vessel_type', label: 'Vessel Type', class: 'vessel_type' }},
                 {{ key: 'part_type', label: 'Part' }},
                 {{ key: 'macro_period', label: 'Macro-Period' }},
                 {{ key: 'period', label: 'Period', class: 'period' }},
+                {{ key: 'scala_metrica', label: 'Scale' }},
+                {{ key: 'larghezza_cm', label: 'Width (cm)' }},
+                {{ key: 'altezza_cm', label: 'Height (cm)' }},
                 {{ key: 'page_ref', label: 'PDF Ref', class: 'page-ref', clickable: true }},
                 {{ key: 'figure_num', label: 'Figure' }},
                 {{ key: 'pottery_id', label: 'Pottery ID' }},
@@ -3505,7 +3539,16 @@ def get_viewer_html(role):
             document.getElementById('editVesselType').value = item.vessel_type || '';
             document.getElementById('editPartType').value = item.part_type || '';
             document.getElementById('editPeriod').value = item.period || '';
+            document.getElementById('editMotivoDecorativo').value = item.motivo_decorativo || '';
+            document.getElementById('editSintassiDecorativa').value = item.sintassi_decorativa || '';
+            document.getElementById('editScalaMetrica').value = item.scala_metrica || '';
+            document.getElementById('editLarghezzaCm').value = item.larghezza_cm || '';
+            document.getElementById('editAltezzaCm').value = item.altezza_cm || '';
             document.getElementById('editModal').classList.add('active');
+            // Setup autocomplete for new fields
+            setupAutocomplete('editMotivoDecorativo', 'motivoDecorativoList', 'motivo_decorativo');
+            setupAutocomplete('editSintassiDecorativa', 'sintassiDecorativaList', 'sintassi_decorativa');
+            setupAutocomplete('editScalaMetrica', 'scalaMetricaList', 'scala_metrica');
         }}
 
         function saveEdit() {{
@@ -3514,7 +3557,12 @@ def get_viewer_html(role):
                 decoration: document.getElementById('editDecoration').value,
                 vessel_type: document.getElementById('editVesselType').value,
                 part_type: document.getElementById('editPartType').value,
-                period: document.getElementById('editPeriod').value
+                period: document.getElementById('editPeriod').value,
+                motivo_decorativo: document.getElementById('editMotivoDecorativo').value,
+                sintassi_decorativa: document.getElementById('editSintassiDecorativa').value,
+                scala_metrica: document.getElementById('editScalaMetrica').value,
+                larghezza_cm: parseFloat(document.getElementById('editLarghezzaCm').value) || null,
+                altezza_cm: parseFloat(document.getElementById('editAltezzaCm').value) || null
             }};
 
             fetch('/api/update-item', {{
