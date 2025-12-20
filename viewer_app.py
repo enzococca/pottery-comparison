@@ -4110,9 +4110,9 @@ def get_viewer_html(role):
 
             document.getElementById('calibrateBtn').classList.add('active');
             document.getElementById('measureBtn').classList.remove('active');
-            document.getElementById('calibrationModal').classList.add('active');
-            document.getElementById('calibrationStep').textContent = 'Click the FIRST point on the scale bar';
-            document.getElementById('calibrationInput').style.display = 'none';
+
+            // Show instructions in measureInfo (don't block with modal yet)
+            updateMeasureInfo('&#128207; <strong>CALIBRATION:</strong> Click the <u>FIRST</u> point on a known distance (e.g., scale bar)');
         }}
 
         function cancelCalibration() {{
@@ -4189,10 +4189,13 @@ def get_viewer_html(role):
                 redrawMeasurements();
 
                 if (calibrationPoints.length === 1) {{
-                    document.getElementById('calibrationStep').textContent = 'Click the SECOND point on the scale bar';
+                    updateMeasureInfo('&#128207; <strong>CALIBRATION:</strong> Now click the <u>SECOND</u> point');
                 }} else if (calibrationPoints.length === 2) {{
-                    document.getElementById('calibrationStep').textContent = 'Enter the known distance:';
+                    // Show modal to enter the distance
+                    document.getElementById('calibrationModal').classList.add('active');
+                    document.getElementById('calibrationStep').textContent = 'Enter the real distance between the two points:';
                     document.getElementById('calibrationInput').style.display = 'block';
+                    updateMeasureInfo('&#128207; Enter the known distance in the popup');
                 }}
             }} else if (measureMode) {{
                 measurePoints.push({{ x, y }});
