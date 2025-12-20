@@ -52,10 +52,11 @@ def extract_scale_from_pdf(pdf_path, page_num=None):
 
     try:
         doc = fitz.open(pdf_path)
-        pages_to_check = [page_num - 1] if page_num else range(len(doc))
+        total_pages = len(doc)
+        pages_to_check = [page_num - 1] if page_num else range(total_pages)
 
         for page_idx in pages_to_check:
-            if page_idx < 0 or page_idx >= len(doc):
+            if page_idx < 0 or page_idx >= total_pages:
                 continue
 
             page = doc[page_idx]
@@ -80,7 +81,7 @@ def extract_scale_from_pdf(pdf_path, page_num=None):
                             pass
 
         doc.close()
-        return {'scales': scales_found, 'total_pages': len(doc)}
+        return {'scales': scales_found, 'total_pages': total_pages}
 
     except Exception as e:
         return {'error': str(e)}
