@@ -1365,6 +1365,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/api/3d/reconstruct':
             image_path = post_data.get('image_path', '')
             with_decoration = post_data.get('with_decoration', True)
+            use_ai = post_data.get('use_ai', False)
+            api_key = post_data.get('api_key', '')
+            print(f"[3D] image={image_path}, use_ai={use_ai}, has_api_key={bool(api_key)}", flush=True)
 
             if not image_path:
                 self.send_json({'error': 'No image path provided'}, 400)
@@ -1379,7 +1382,13 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
             try:
                 from vessel_3d_reconstruction import reconstruct_vessel
-                result = reconstruct_vessel(full_path, debug=False, with_decoration=with_decoration)
+                result = reconstruct_vessel(
+                    full_path,
+                    debug=False,
+                    with_decoration=with_decoration,
+                    use_ai=use_ai,
+                    api_key=api_key if api_key else None
+                )
 
                 if result and result.get('glb_path'):
                     # Read GLB file and encode as base64
@@ -1391,7 +1400,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                         'glb_data': glb_data,
                         'vertices': len(result['mesh']['vertices']),
                         'faces': len(result['mesh']['faces']),
-                        'profile_points': result['mesh']['profile_points']
+                        'profile_points': result['mesh']['profile_points'],
+                        'has_thickness': result['mesh'].get('has_thickness', False),
+                        'wall_thickness': result['profile'].get('avg_thickness', 0)
                     }
 
                     # Include textured GLB if available
@@ -1399,6 +1410,13 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                         with open(result['glb_textured_path'], 'rb') as f:
                             response['glb_textured_data'] = base64.b64encode(f.read()).decode('utf-8')
                         response['has_decoration'] = result.get('decoration', {}).get('has_decoration', False)
+
+                    # Include AI-generated texture GLB if available
+                    if result.get('glb_ai_path') and os.path.exists(result['glb_ai_path']):
+                        with open(result['glb_ai_path'], 'rb') as f:
+                            response['glb_ai_data'] = base64.b64encode(f.read()).decode('utf-8')
+                        response['ai_analysis'] = result.get('ai_analysis')
+                        response['has_ai_decoration'] = True
 
                     self.send_json(response)
                 else:
@@ -2473,7 +2491,7 @@ def get_viewer_html(role):
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
+            z-index: 10000;
             align-items: center;
             justify-content: center;
         }}
@@ -2737,17 +2755,104 @@ def get_viewer_html(role):
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0,0,0,0.7);
+        }}
+        .viewer3d-panel {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.85);
+            padding: 15px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.85em;
+            min-width: 200px;
+        }}
+        .viewer3d-panel h4 {{
+            margin: 0 0 10px 0;
+            color: #4fc3f7;
+            font-size: 1em;
+        }}
+        .viewer3d-panel label {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0;
+        }}
+        .viewer3d-panel input[type="range"] {{
+            width: 100px;
+        }}
+        .viewer3d-panel input[type="checkbox"] {{
+            width: 18px;
+            height: 18px;
+        }}
+        .viewer3d-panel input[type="color"] {{
+            width: 40px;
+            height: 25px;
+            border: none;
+            cursor: pointer;
+        }}
+        .viewer3d-panel hr {{
+            border: none;
+            border-top: 1px solid #444;
+            margin: 10px 0;
             padding: 10px 20px;
             border-radius: 25px;
             color: #888;
             font-size: 0.85em;
         }}
+        .viewer3d-btn.ai-btn {{
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+        }}
+        .viewer3d-btn.ai-btn:hover {{
+            background: linear-gradient(135deg, #8e44ad, #7d3c98);
+        }}
+        .viewer3d-ai-info {{
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(155, 89, 182, 0.9);
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            max-width: 300px;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }}
+        .viewer3d-ai-info h5 {{
+            margin: 0 0 10px 0;
+            font-size: 1em;
+            color: #fff;
+        }}
+        .viewer3d-ai-info .ai-field {{
+            margin: 5px 0;
+            font-size: 0.9em;
+        }}
+        .viewer3d-ai-info .ai-label {{
+            color: rgba(255,255,255,0.7);
+            font-size: 0.8em;
+        }}
+        .viewer3d-ai-info .ai-value {{
+            color: #fff;
+            font-weight: 500;
+        }}
+        .viewer3d-ai-info .ai-patterns {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }}
+        .viewer3d-ai-info .ai-pattern-tag {{
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }}
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
     <div class="header">
@@ -2871,7 +2976,9 @@ def get_viewer_html(role):
                 <span class="viewer3d-info" id="viewer3dInfo"></span>
             </div>
             <div class="viewer3d-controls">
+                <button class="viewer3d-btn ai-btn" id="aiDecorationBtn" onclick="openAIModal()" title="Analyze decoration with Claude AI">&#129302; AI Analysis</button>
                 <button class="viewer3d-btn" id="toggleDecorationBtn" onclick="toggleDecoration()" style="display:none;">&#127912; Plain</button>
+                <button class="viewer3d-btn" id="toggleAIBtn" onclick="toggleAIDecoration()" style="display:none;">&#129302; AI</button>
                 <button class="viewer3d-btn" onclick="reset3DView()">&#8635; Reset View</button>
                 <button class="viewer3d-btn" onclick="download3D()">&#8595; Download GLB</button>
                 <button class="viewer3d-btn close" onclick="close3DViewer()">&#10005; Close</button>
@@ -2882,7 +2989,48 @@ def get_viewer_html(role):
                 <div class="spinner"></div>
                 <p>Generating 3D model...</p>
             </div>
+            <!-- AI Analysis Info Panel -->
+            <div class="viewer3d-ai-info" id="viewer3dAIInfo" style="display:none;">
+                <h5>&#129302; AI Decoration Analysis</h5>
+                <div id="aiAnalysisContent"></div>
+            </div>
+            <!-- Control Panel -->
+            <div class="viewer3d-panel" id="viewer3dPanel">
+                <h4>&#9881; Display Options</h4>
+                <label>Color: <input type="color" id="v3dColor" value="#ffffff" onchange="update3DColor(this.value)"></label>
+                <label>Wireframe: <input type="checkbox" id="v3dWireframe" onchange="toggle3DWireframe(this.checked)"></label>
+                <label>Edges: <input type="checkbox" id="v3dEdges" checked onchange="toggle3DEdges(this.checked)"></label>
+                <label>Edge Color: <input type="color" id="v3dEdgeColor" value="#000000" onchange="update3DEdgeColor(this.value)"></label>
+                <hr>
+                <label>Opacity: <input type="range" id="v3dOpacity" min="0.1" max="1" step="0.1" value="1" onchange="update3DOpacity(this.value)"></label>
+                <label>Light: <input type="range" id="v3dLight" min="0.2" max="2" step="0.1" value="1" onchange="update3DLight(this.value)"></label>
+                <hr>
+                <label>Grid: <input type="checkbox" id="v3dGrid" checked onchange="toggle3DGrid(this.checked)"></label>
+                <label>Auto Rotate: <input type="checkbox" id="v3dAutoRotate" onchange="toggle3DAutoRotate(this.checked)"></label>
+            </div>
             <div class="viewer3d-help">&#128270; Drag to rotate | Scroll to zoom | Right-click to pan</div>
+        </div>
+    </div>
+
+    <!-- AI API Key Modal -->
+    <div class="modal-overlay" id="aiKeyModal">
+        <div class="modal" style="max-width: 500px;">
+            <h3>&#129302; Claude AI Decoration Analysis</h3>
+            <p style="color: #aaa; margin-bottom: 15px;">Enter your Anthropic API key to analyze decorations with Claude AI.</p>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">API Key:</label>
+                <input type="password" id="anthropicApiKey" placeholder="sk-ant-..." style="width: 100%; padding: 10px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="saveApiKey" checked>
+                    <span>Remember API key (stored locally)</span>
+                </label>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" onclick="closeModal('aiKeyModal')">Cancel</button>
+                <button class="modal-btn confirm" onclick="runAIAnalysis()">&#129302; Analyze with AI</button>
+            </div>
         </div>
     </div>
 
@@ -3379,6 +3527,7 @@ def get_viewer_html(role):
                     <button class="measure-btn" id="clearMeasureBtn" onclick="clearMeasurements()" title="Clear all">&#10006; Clear</button>
                     <button class="measure-btn" id="saveMeasureBtn" onclick="saveMeasurements()" title="Save measurements" style="background:rgba(33,150,243,0.7);">&#128190; Save</button>
                     <button class="measure-btn" id="autoScaleBtn" onclick="autoDetectScale()" title="Auto-detect scale from PDF" style="background:rgba(156,39,176,0.7);">&#128269; Auto Scale</button>
+                    <button class="measure-btn" id="view3dBtn" onclick="open3DViewer()" title="View 3D reconstruction" style="background:rgba(76,175,80,0.7);">&#127912; 3D</button>
                 </div>
                 <canvas class="measure-canvas" id="measureCanvas"></canvas>
                 <div class="measure-info" id="measureInfo" style="display:none;"></div>
@@ -4633,30 +4782,50 @@ def get_viewer_html(role):
 
         let viewer3dScene, viewer3dCamera, viewer3dRenderer, viewer3dControls;
         let viewer3dModel = null;
+        let viewer3dEdges = null;
+        let viewer3dGrid = null;
+        let viewer3dLights = [];
         let viewer3dGlbData = null;
         let viewer3dGlbTexturedData = null;
+        let viewer3dGlbAIData = null;
+        let viewer3dAIAnalysis = null;
         let viewer3dShowTextured = true;
+        let viewer3dShowAI = false;
+        let viewer3dCurrentItem = null;
 
         function open3DViewer() {{
-            if (!currentItem) {{
+            const item = filteredData[currentIndex];
+            if (!item) {{
                 alert('No item selected');
                 return;
             }}
 
+            // Store current item and reset AI data
+            viewer3dCurrentItem = item;
+            viewer3dGlbAIData = null;
+            viewer3dAIAnalysis = null;
+            viewer3dShowAI = false;
+
             const modal = document.getElementById('viewer3dModal');
             const loading = document.getElementById('viewer3dLoading');
             const info = document.getElementById('viewer3dInfo');
+            const aiInfo = document.getElementById('viewer3dAIInfo');
 
             modal.classList.add('active');
             loading.style.display = 'block';
             loading.innerHTML = '<div class="spinner"></div><p>Generating 3D model...</p>';
-            info.textContent = 'Processing ' + currentItem.id + '...';
+            info.textContent = 'Processing ' + item.id + '...';
+            if (aiInfo) aiInfo.style.display = 'none';
+
+            // Hide AI toggle button initially
+            const toggleAIBtn = document.getElementById('toggleAIBtn');
+            if (toggleAIBtn) toggleAIBtn.style.display = 'none';
 
             // Request 3D reconstruction
             fetch('/api/3d/reconstruct', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ image_path: currentItem.image_path, with_decoration: true }})
+                body: JSON.stringify({{ image_path: item.image_path, with_decoration: true }})
             }})
             .then(r => r.json())
             .then(data => {{
@@ -4669,6 +4838,9 @@ def get_viewer_html(role):
                 viewer3dGlbTexturedData = data.glb_textured_data || null;
 
                 let infoText = data.vertices.toLocaleString() + ' vertices, ' + data.faces.toLocaleString() + ' faces';
+                if (data.has_thickness) {{
+                    infoText += ' | Wall: ' + data.wall_thickness.toFixed(1) + 'px';
+                }}
                 if (data.has_decoration) {{
                     infoText += ' | Decoration detected';
                 }}
@@ -4691,6 +4863,7 @@ def get_viewer_html(role):
 
         function toggleDecoration() {{
             viewer3dShowTextured = !viewer3dShowTextured;
+            viewer3dShowAI = false;
             const btn = document.getElementById('toggleDecorationBtn');
             if (btn) {{
                 btn.textContent = viewer3dShowTextured ? '&#127912; Plain' : '&#127912; Decorated';
@@ -4698,6 +4871,211 @@ def get_viewer_html(role):
             if (viewer3dScene) {{
                 load3DModel(viewer3dShowTextured && viewer3dGlbTexturedData ? viewer3dGlbTexturedData : viewer3dGlbData);
             }}
+            // Hide AI info when switching to standard view
+            const aiInfo = document.getElementById('viewer3dAIInfo');
+            if (aiInfo) aiInfo.style.display = 'none';
+        }}
+
+        function toggleAIDecoration() {{
+            viewer3dShowAI = !viewer3dShowAI;
+            const btn = document.getElementById('toggleAIBtn');
+            if (btn) {{
+                btn.textContent = viewer3dShowAI ? '&#127912; Standard' : '&#129302; AI';
+            }}
+            if (viewer3dScene && viewer3dGlbAIData) {{
+                load3DModel(viewer3dShowAI ? viewer3dGlbAIData : viewer3dGlbData);
+            }}
+            // Show/hide AI info panel
+            const aiInfo = document.getElementById('viewer3dAIInfo');
+            if (aiInfo) {{
+                aiInfo.style.display = viewer3dShowAI ? 'block' : 'none';
+            }}
+        }}
+
+        function openAIModal() {{
+            // Check for saved API key
+            const savedKey = localStorage.getItem('anthropic_api_key');
+            if (savedKey) {{
+                document.getElementById('anthropicApiKey').value = savedKey;
+            }}
+            document.getElementById('aiKeyModal').classList.add('active');
+        }}
+
+        function runAIAnalysis() {{
+            const apiKey = document.getElementById('anthropicApiKey').value.trim();
+            if (!apiKey) {{
+                alert('Please enter your Anthropic API key');
+                return;
+            }}
+
+            // Save key if checkbox is checked
+            if (document.getElementById('saveApiKey').checked) {{
+                localStorage.setItem('anthropic_api_key', apiKey);
+            }} else {{
+                localStorage.removeItem('anthropic_api_key');
+            }}
+
+            // Close modal
+            closeModal('aiKeyModal');
+
+            // Show loading
+            const loading = document.getElementById('viewer3dLoading');
+            const info = document.getElementById('viewer3dInfo');
+            loading.style.display = 'block';
+            loading.innerHTML = '<div class="spinner"></div><p>&#129302; Analyzing decoration with Claude AI...</p>';
+
+            // Request AI analysis
+            fetch('/api/3d/reconstruct', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    image_path: viewer3dCurrentItem.image_path,
+                    with_decoration: true,
+                    use_ai: true,
+                    api_key: apiKey
+                }})
+            }})
+            .then(r => r.json())
+            .then(data => {{
+                loading.style.display = 'none';
+                console.log('AI Response:', data);
+
+                if (data.error) {{
+                    alert('AI Analysis error: ' + data.error);
+                    return;
+                }}
+
+                // Always show AI analysis if available
+                if (data.ai_analysis) {{
+                    console.log('AI Analysis:', data.ai_analysis);
+                    displayAIAnalysis(data.ai_analysis);
+                    viewer3dAIAnalysis = data.ai_analysis;
+                }}
+
+                if (data.glb_ai_data) {{
+                    viewer3dGlbAIData = data.glb_ai_data;
+
+                    // Show toggle button
+                    const toggleAIBtn = document.getElementById('toggleAIBtn');
+                    if (toggleAIBtn) {{
+                        toggleAIBtn.style.display = 'inline-block';
+                    }}
+
+                    // Switch to AI view
+                    viewer3dShowAI = true;
+                    load3DModel(viewer3dGlbAIData);
+
+                    info.textContent += ' | AI: ' + (data.ai_analysis?.decoration_type || 'analyzed');
+                }} else if (data.ai_analysis) {{
+                    // AI analysis succeeded but no texture - still show info
+                    info.textContent += ' | AI analizzato (no texture)';
+                    alert('Analisi AI completata. Vedi il pannello in alto a sinistra per i dettagli.');
+                }} else {{
+                    alert('Analisi AI non riuscita. Verifica la chiave API.');
+                }}
+            }})
+            .catch(err => {{
+                loading.style.display = 'none';
+                alert('AI Analysis error: ' + err);
+            }});
+        }}
+
+        function displayAIAnalysis(analysis) {{
+            if (!analysis) return;
+
+            const container = document.getElementById('aiAnalysisContent');
+            const aiInfo = document.getElementById('viewer3dAIInfo');
+
+            let html = '';
+
+            // Period/Style (important for archaeology)
+            if (analysis.period_style) {{
+                html += '<div class="ai-field"><span class="ai-label">Stile/Periodo:</span> <span class="ai-value" style="color:#ffd700;">' + analysis.period_style + '</span></div>';
+            }}
+
+            // Basic info in a compact grid
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px 0;">';
+            if (analysis.decoration_type) {{
+                html += '<div class="ai-field"><span class="ai-label">Tipo:</span> <span class="ai-value">' + analysis.decoration_type + '</span></div>';
+            }}
+            if (analysis.technique) {{
+                html += '<div class="ai-field"><span class="ai-label">Tecnica:</span> <span class="ai-value">' + analysis.technique + '</span></div>';
+            }}
+            if (analysis.symmetry) {{
+                html += '<div class="ai-field"><span class="ai-label">Simmetria:</span> <span class="ai-value">' + analysis.symmetry + '</span></div>';
+            }}
+            if (analysis.repetition_module) {{
+                html += '<div class="ai-field"><span class="ai-label">Modulo:</span> <span class="ai-value">' + analysis.repetition_module + '</span></div>';
+            }}
+            html += '</div>';
+
+            // Tool marks
+            if (analysis.tool_marks) {{
+                html += '<div class="ai-field"><span class="ai-label">Strumento:</span> <span class="ai-value">' + analysis.tool_marks + '</span></div>';
+            }}
+
+            // Band structure
+            if (analysis.band_structure && analysis.band_structure.length > 0) {{
+                html += '<div class="ai-field" style="margin-top:8px;"><span class="ai-label">Struttura a fasce:</span>';
+                html += '<div style="margin-top:5px;">';
+                analysis.band_structure.forEach((band, idx) => {{
+                    html += '<div style="background:rgba(255,255,255,0.1);padding:4px 8px;margin:3px 0;border-radius:4px;font-size:0.85em;">';
+                    html += '<strong>' + (band.band_name || 'Fascia ' + (idx+1)) + '</strong>';
+                    if (band.height_start !== undefined && band.height_end !== undefined) {{
+                        html += ' <span style="opacity:0.7;">(' + band.height_start + '%-' + band.height_end + '%)</span>';
+                    }}
+                    if (band.main_motif) {{
+                        html += '<br><span style="opacity:0.8;">' + band.main_motif + '</span>';
+                    }}
+                    html += '</div>';
+                }});
+                html += '</div></div>';
+            }}
+
+            // Patterns - detailed view
+            if (analysis.patterns && analysis.patterns.length > 0) {{
+                html += '<div class="ai-field" style="margin-top:8px;"><span class="ai-label">Pattern rilevati (' + analysis.patterns.length + '):</span>';
+                html += '<div class="ai-patterns" style="margin-top:5px;">';
+                analysis.patterns.forEach(p => {{
+                    if (typeof p === 'string') {{
+                        html += '<span class="ai-pattern-tag">' + p + '</span>';
+                    }} else if (typeof p === 'object') {{
+                        let patternText = p.type || 'pattern';
+                        let tooltip = '';
+                        if (p.position) {{
+                            patternText += ' @' + p.position;
+                        }}
+                        if (p.height_percent_start !== undefined) {{
+                            tooltip += p.height_percent_start + '%-' + p.height_percent_end + '% | ';
+                        }}
+                        if (p.line_count) {{
+                            tooltip += p.line_count + ' linee | ';
+                        }}
+                        if (p.description_it) {{
+                            tooltip += p.description_it;
+                        }}
+                        html += '<span class="ai-pattern-tag" title="' + tooltip + '" style="cursor:help;">' + patternText + '</span>';
+                    }}
+                }});
+                html += '</div></div>';
+            }}
+
+            // Complete description
+            const description = analysis.complete_description || analysis.description;
+            if (description) {{
+                html += '<div class="ai-field" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.2);">';
+                html += '<span class="ai-label">&#128221; Analisi Archeologica:</span>';
+                html += '<div style="margin-top:8px;font-style:italic;opacity:0.95;line-height:1.5;font-size:0.9em;background:rgba(0,0,0,0.2);padding:10px;border-radius:6px;">' + description + '</div>';
+                html += '</div>';
+            }}
+
+            container.innerHTML = html;
+            aiInfo.style.display = 'block';
+
+            // Make the panel scrollable and wider
+            aiInfo.style.maxHeight = '450px';
+            aiInfo.style.maxWidth = '380px';
+            aiInfo.style.overflowY = 'auto';
         }}
 
         function init3DViewer() {{
@@ -4729,21 +5107,38 @@ def get_viewer_html(role):
             viewer3dControls.enableDamping = true;
             viewer3dControls.dampingFactor = 0.05;
 
-            // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // Lights - bright enough to see the model
+            viewer3dLights = [];
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
             viewer3dScene.add(ambientLight);
+            viewer3dLights.push(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(50, 50, 50);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(50, 100, 50);
             viewer3dScene.add(directionalLight);
+            viewer3dLights.push(directionalLight);
 
-            const backLight = new THREE.DirectionalLight(0x4fc3f7, 0.3);
-            backLight.position.set(-50, 20, -50);
+            const frontLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            frontLight.position.set(0, 50, 100);
+            viewer3dScene.add(frontLight);
+            viewer3dLights.push(frontLight);
+
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            backLight.position.set(-50, 50, -50);
             viewer3dScene.add(backLight);
+            viewer3dLights.push(backLight);
+
+            // Hemisphere light for softer shadows
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+            viewer3dScene.add(hemiLight);
+            viewer3dLights.push(hemiLight);
 
             // Grid
-            const gridHelper = new THREE.GridHelper(100, 20, 0x4fc3f7, 0x333333);
-            viewer3dScene.add(gridHelper);
+            viewer3dGrid = new THREE.GridHelper(100, 20, 0x4fc3f7, 0x333333);
+            viewer3dScene.add(viewer3dGrid);
+
+            console.log('3D Viewer initialized');
 
             // Animate
             function animate() {{
@@ -4776,44 +5171,110 @@ def get_viewer_html(role):
             }}
 
             loader.parse(bytes.buffer, '', function(gltf) {{
-                // Remove old model
+                console.log('GLB loaded successfully', gltf);
+
+                // Remove old model and edges
                 if (viewer3dModel) {{
                     viewer3dScene.remove(viewer3dModel);
+                }}
+                if (viewer3dEdges) {{
+                    viewer3dScene.remove(viewer3dEdges);
+                    viewer3dEdges = null;
                 }}
 
                 viewer3dModel = gltf.scene;
 
-                // Apply material
+                // Get color from control panel
+                const colorInput = document.getElementById('v3dColor');
+                const modelColor = colorInput ? colorInput.value : '#ffffff';
+
+                console.log('Applying color:', modelColor);
+
+                // Store meshes for later control
+                let meshCount = 0;
+
+                // Apply material - preserve textures if present
                 viewer3dModel.traverse(function(child) {{
+                    console.log('Traversing:', child.type, child.name);
                     if (child.isMesh) {{
-                        child.material = new THREE.MeshStandardMaterial({{
-                            color: 0xc9a06c,  // Ceramic color
-                            roughness: 0.7,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide
-                        }});
+                        meshCount++;
+                        console.log('Found mesh with geometry:', child.geometry);
+
+                        // Check if original material has a texture
+                        const hasTexture = child.material && child.material.map;
+                        console.log('Has texture:', hasTexture);
+
+                        if (hasTexture) {{
+                            // Preserve texture, just update material properties
+                            child.material.side = THREE.DoubleSide;
+                            child.material.transparent = true;
+                            child.material.opacity = 1.0;
+                            // Make it brighter
+                            if (child.material.color) {{
+                                child.material.color.setHex(0xffffff);
+                            }}
+                            console.log('Preserved texture on material');
+                        }} else {{
+                            // No texture - use white ceramic material
+                            const mat = new THREE.MeshStandardMaterial({{
+                                color: modelColor,
+                                side: THREE.DoubleSide,
+                                transparent: true,
+                                opacity: 1.0,
+                                roughness: 0.7,
+                                metalness: 0.1
+                            }});
+                            child.material = mat;
+                        }}
+
+                        // Store reference on mesh for later updates
+                        child.userData.vesselMesh = true;
+                        child.userData.hasTexture = hasTexture;
+
+                        // Create edges
+                        if (child.geometry) {{
+                            const edgesGeometry = new THREE.EdgesGeometry(child.geometry, 15);
+                            const edgeColorInput = document.getElementById('v3dEdgeColor');
+                            const edgeColor = edgeColorInput ? edgeColorInput.value : '#000000';
+                            const edgesMaterial = new THREE.LineBasicMaterial({{ color: edgeColor }});
+                            const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+                            edges.userData.isEdge = true;
+                            child.add(edges);
+                            console.log('Added edges to mesh');
+                        }}
                     }}
                 }});
+
+                console.log('Total meshes found:', meshCount);
 
                 // Center and scale
                 const box = new THREE.Box3().setFromObject(viewer3dModel);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
+                console.log('Model size:', size);
+
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 30 / maxDim;
+                const scale = maxDim > 0 ? 30 / maxDim : 1;
 
                 viewer3dModel.scale.setScalar(scale);
-                viewer3dModel.position.sub(center.multiplyScalar(scale));
+
+                // Recalculate center after scaling
+                const newBox = new THREE.Box3().setFromObject(viewer3dModel);
+                const newCenter = newBox.getCenter(new THREE.Vector3());
+                viewer3dModel.position.sub(newCenter);
 
                 viewer3dScene.add(viewer3dModel);
+                console.log('Model added to scene with edges');
 
                 // Position camera
-                viewer3dCamera.position.set(50, 30, 50);
+                viewer3dCamera.position.set(60, 40, 60);
                 viewer3dControls.target.set(0, 0, 0);
                 viewer3dControls.update();
             }},
             function(error) {{
                 console.error('3D loading error:', error);
+                document.getElementById('viewer3dLoading').innerHTML = '<p style="color:#ff6b6b;">Error loading 3D model: ' + error + '</p>';
+                document.getElementById('viewer3dLoading').style.display = 'block';
             }});
         }}
 
@@ -4838,7 +5299,8 @@ def get_viewer_html(role):
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = (currentItem ? currentItem.id : 'vessel') + '.glb';
+            const item = filteredData[currentIndex];
+            a.download = (item ? item.id : 'vessel') + '.glb';
             a.click();
             URL.revokeObjectURL(url);
         }}
@@ -4855,6 +5317,90 @@ def get_viewer_html(role):
                 close3DViewer();
             }}
         }});
+
+        // ===== 3D VIEWER CONTROLS =====
+
+        function update3DColor(color) {{
+            if (!viewer3dModel) return;
+            console.log('Updating color to:', color);
+            viewer3dModel.traverse(function(child) {{
+                if (child.isMesh && child.material && child.userData.vesselMesh) {{
+                    child.material.color.setStyle(color);
+                    child.material.needsUpdate = true;
+                }}
+            }});
+        }}
+
+        function toggle3DWireframe(enabled) {{
+            if (!viewer3dModel) return;
+            console.log('Wireframe:', enabled);
+            viewer3dModel.traverse(function(child) {{
+                if (child.isMesh && child.material && child.userData.vesselMesh) {{
+                    child.material.wireframe = enabled;
+                    child.material.needsUpdate = true;
+                }}
+            }});
+        }}
+
+        function toggle3DEdges(show) {{
+            if (!viewer3dModel) return;
+            console.log('Edges:', show);
+            viewer3dModel.traverse(function(child) {{
+                if (child.userData.isEdge) {{
+                    child.visible = show;
+                }}
+            }});
+        }}
+
+        function update3DEdgeColor(color) {{
+            if (!viewer3dModel) return;
+            console.log('Edge color:', color);
+            viewer3dModel.traverse(function(child) {{
+                if (child.userData.isEdge && child.material) {{
+                    child.material.color.setStyle(color);
+                    child.material.needsUpdate = true;
+                }}
+            }});
+        }}
+
+        function update3DOpacity(value) {{
+            if (!viewer3dModel) return;
+            const opacity = parseFloat(value);
+            console.log('Opacity:', opacity);
+            viewer3dModel.traverse(function(child) {{
+                if (child.isMesh && child.material && child.userData.vesselMesh) {{
+                    child.material.opacity = opacity;
+                    child.material.transparent = true;
+                    child.material.needsUpdate = true;
+                }}
+            }});
+        }}
+
+        function update3DLight(value) {{
+            const intensity = parseFloat(value);
+            viewer3dLights.forEach(light => {{
+                if (light.isAmbientLight) {{
+                    light.intensity = intensity;
+                }} else if (light.isDirectionalLight) {{
+                    light.intensity = intensity * 0.8;
+                }} else if (light.isHemisphereLight) {{
+                    light.intensity = intensity * 0.6;
+                }}
+            }});
+        }}
+
+        function toggle3DGrid(show) {{
+            if (viewer3dGrid) {{
+                viewer3dGrid.visible = show;
+            }}
+        }}
+
+        function toggle3DAutoRotate(enabled) {{
+            if (viewer3dControls) {{
+                viewer3dControls.autoRotate = enabled;
+                viewer3dControls.autoRotateSpeed = 2.0;
+            }}
+        }}
 
     </script>
 </body>
