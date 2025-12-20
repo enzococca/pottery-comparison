@@ -625,8 +625,51 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     self.send_json({'error': 'PDF not found'})
             return
 
-        # Serve static files
+        # Serve static files with caching
+        # Add cache headers for images and PDFs
+        if parsed.path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            try:
+                return self.serve_static_with_cache(parsed.path, 'image', max_age=86400)  # 1 day
+            except:
+                pass
+        elif parsed.path.endswith('.pdf'):
+            try:
+                return self.serve_static_with_cache(parsed.path, 'pdf', max_age=604800)  # 1 week
+            except:
+                pass
+
         return SimpleHTTPRequestHandler.do_GET(self)
+
+    def serve_static_with_cache(self, path, file_type, max_age=86400):
+        """Serve static files with cache headers"""
+        file_path = Path(__file__).parent / path.lstrip('/')
+        if not file_path.exists():
+            self.send_error(404, "File not found")
+            return
+
+        # Determine content type
+        content_types = {
+            'image': 'image/png',
+            'pdf': 'application/pdf'
+        }
+        if path.endswith('.jpg') or path.endswith('.jpeg'):
+            content_types['image'] = 'image/jpeg'
+        elif path.endswith('.gif'):
+            content_types['image'] = 'image/gif'
+        elif path.endswith('.webp'):
+            content_types['image'] = 'image/webp'
+
+        self.send_response(200)
+        self.send_header('Content-Type', content_types.get(file_type, 'application/octet-stream'))
+        self.send_header('Cache-Control', f'public, max-age={max_age}')
+        self.send_header('Access-Control-Allow-Origin', '*')
+
+        # Stream file
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            self.send_header('Content-Length', len(content))
+            self.end_headers()
+            self.wfile.write(content)
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1181,6 +1224,19 @@ def get_viewer_html(role):
             border-radius: 4px;
             flex-shrink: 0;
         }}
+        .thumb-placeholder {{
+            width: 50px;
+            height: 50px;
+            border-radius: 4px;
+            flex-shrink: 0;
+            background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }}
+        @keyframes shimmer {{
+            0% {{ background-position: -200% 0; }}
+            100% {{ background-position: 200% 0; }}
+        }}
         .item-card .info {{ flex: 1; min-width: 0; overflow: hidden; }}
         .item-card .id {{
             font-weight: 600;
@@ -1224,6 +1280,23 @@ def get_viewer_html(role):
             object-fit: contain;
             border-radius: 8px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }}
+        .image-viewer img.loading {{
+            opacity: 0.3;
+        }}
+        .image-spinner {{
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(79, 195, 247, 0.2);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            z-index: 10;
+        }}
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
         }}
         .nav-btn {{
             position: absolute;
@@ -1754,11 +1827,12 @@ def get_viewer_html(role):
             list.innerHTML = filteredData.map((item, i) => `
                 <div class="item-card ${{i === currentIndex ? 'active' : ''}} ${{selectedItems.has(item.id) ? 'selected' : ''}}"
                      onclick="handleCardClick(event, ${{i}})"
+                     data-index="${{i}}"
                      style="--collection-color: ${{getCollectionColor(item.collection)}}">
                     <input type="checkbox" class="item-checkbox"
                            ${{selectedItems.has(item.id) ? 'checked' : ''}}
                            onclick="toggleItemSelection(event, '${{item.id}}')">
-                    <img src="${{item.image_path || ''}}" onerror="this.style.display='none'">
+                    <div class="thumb-placeholder" data-src="${{item.image_path || ''}}"></div>
                     <div class="info">
                         <div class="id">${{item.id || 'N/A'}}</div>
                         <div class="period">${{(item.period || '').substring(0, 30)}}</div>
@@ -1772,6 +1846,34 @@ def get_viewer_html(role):
 
             if (selectMode) list.classList.add('select-mode');
             else list.classList.remove('select-mode');
+
+            // Lazy load thumbnails
+            lazyLoadThumbnails();
+        }}
+
+        // Lazy loading with Intersection Observer
+        let observer = null;
+        function lazyLoadThumbnails() {{
+            if (observer) observer.disconnect();
+
+            observer = new IntersectionObserver((entries) => {{
+                entries.forEach(entry => {{
+                    if (entry.isIntersecting) {{
+                        const placeholder = entry.target;
+                        const src = placeholder.dataset.src;
+                        if (src) {{
+                            const img = document.createElement('img');
+                            img.src = src;
+                            img.loading = 'lazy';
+                            img.onerror = () => img.style.display = 'none';
+                            img.onload = () => placeholder.replaceWith(img);
+                        }}
+                        observer.unobserve(placeholder);
+                    }}
+                }});
+            }}, {{ rootMargin: '100px' }});
+
+            document.querySelectorAll('.thumb-placeholder').forEach(el => observer.observe(el));
         }}
 
         function handleCardClick(event, index) {{
@@ -1828,8 +1930,12 @@ def get_viewer_html(role):
             document.querySelector('.item-card.active')?.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
 
             const viewer = document.getElementById('imageViewer');
+            const cacheBuster = item.rotated ? `?t=${{Date.now()}}` : '';
             viewer.innerHTML = `
-                <img src="${{item.image_path}}?t=${{Date.now()}}" onerror="this.outerHTML='<div class=\\'no-image\\'><p>Image not found</p></div>'">
+                <div class="image-spinner"></div>
+                <img class="loading" src="${{item.image_path}}${{cacheBuster}}"
+                     onload="this.classList.remove('loading'); this.previousElementSibling.style.display='none';"
+                     onerror="this.outerHTML='<div class=\\'no-image\\'><p>Image not found</p></div>'; document.querySelector('.image-spinner')?.remove();">
                 <button class="nav-btn prev" onclick="navigate(-1)">&#8249;</button>
                 <button class="nav-btn next" onclick="navigate(1)">&#8250;</button>
                 {rotate_buttons}
@@ -1858,6 +1964,9 @@ def get_viewer_html(role):
                         </div>
                     </div>
                 `).join('');
+
+            // Preload adjacent images for smooth navigation
+            preloadAdjacent(index);
         }}
 
         function navigate(dir) {{
@@ -1866,6 +1975,17 @@ def get_viewer_html(role):
             if (idx < 0) idx = filteredData.length - 1;
             if (idx >= filteredData.length) idx = 0;
             selectItem(idx);
+        }}
+
+        // Preload adjacent images for smooth navigation
+        function preloadAdjacent(index) {{
+            const preloadIndexes = [index - 1, index + 1, index - 2, index + 2];
+            preloadIndexes.forEach(i => {{
+                if (i >= 0 && i < filteredData.length && filteredData[i]?.image_path) {{
+                    const img = new Image();
+                    img.src = filteredData[i].image_path;
+                }}
+            }});
         }}
 
         function rotateImage(degrees) {{
@@ -1880,8 +2000,12 @@ def get_viewer_html(role):
             }})
             .then(r => r.json())
             .then(result => {{
-                if (result.success) selectItem(currentIndex);
-                else alert('Rotation error: ' + (result.error || 'Unknown'));
+                if (result.success) {{
+                    item.rotated = true;  // Mark for cache-busting
+                    selectItem(currentIndex);
+                }} else {{
+                    alert('Rotation error: ' + (result.error || 'Unknown'));
+                }}
             }})
             .catch(err => alert('Error: ' + err));
         }}
