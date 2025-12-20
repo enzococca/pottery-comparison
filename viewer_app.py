@@ -23,6 +23,18 @@ import hashlib
 import secrets
 import http.cookies
 from datetime import datetime
+import base64
+import io
+
+# ML Model imports (lazy loaded)
+ML_MODEL = None
+ML_ENCODERS = None
+ML_TRANSFORM = None
+
+# Image Similarity Search
+EMBEDDINGS = None
+EMBEDDINGS_METADATA = None
+FEATURE_EXTRACTOR = None
 
 # Configuration
 PORT = int(os.environ.get('PORT', 8080))
@@ -52,6 +64,358 @@ MACRO_PERIODS = {
     "Late Bronze Age": ["bronze récent", "bronze recent", "late bronze", "1600-1250",
                         "1600-600", "fer i", "fer ii", "iron age", "fer ", "masafi"]
 }
+
+# ML Model paths
+ML_MODEL_DIR = Path(__file__).parent / "ml_model"
+ML_MODEL_PATH = ML_MODEL_DIR / "ceramic_classifier.pt"
+ML_ENCODERS_PATH = ML_MODEL_DIR / "label_encoders.json"
+
+
+def load_ml_model():
+    """Load ML model lazily"""
+    global ML_MODEL, ML_ENCODERS, ML_TRANSFORM
+
+    if ML_MODEL is not None:
+        return True
+
+    try:
+        import torch
+        import torch.nn as nn
+        from torchvision import transforms, models
+        from PIL import Image
+
+        # Define model architecture
+        class CeramicClassifier(nn.Module):
+            def __init__(self, n_period_classes, n_decoration_classes):
+                super().__init__()
+                self.backbone = models.resnet18(weights=None)
+                n_features = self.backbone.fc.in_features
+                self.backbone.fc = nn.Identity()
+                self.shared = nn.Sequential(nn.Linear(n_features, 256), nn.ReLU(), nn.Dropout(0.3))
+                self.period_head = nn.Linear(256, n_period_classes)
+                self.decoration_head = nn.Linear(256, n_decoration_classes)
+
+            def forward(self, x):
+                features = self.backbone(x)
+                shared = self.shared(features)
+                return self.period_head(shared), self.decoration_head(shared)
+
+        # Load encoders
+        with open(ML_ENCODERS_PATH) as f:
+            ML_ENCODERS = json.load(f)
+
+        # Load model
+        checkpoint = torch.load(ML_MODEL_PATH, map_location='cpu')
+        ML_MODEL = CeramicClassifier(checkpoint['n_period_classes'], checkpoint['n_decoration_classes'])
+        ML_MODEL.load_state_dict(checkpoint['model_state_dict'])
+        ML_MODEL.eval()
+
+        # Create transform
+        ML_TRANSFORM = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        print("ML Model loaded successfully")
+        return True
+
+    except Exception as e:
+        print(f"Error loading ML model: {e}")
+        return False
+
+
+def classify_image(image_data):
+    """Classify an image using the ML model"""
+    if not load_ml_model():
+        return {'error': 'ML model not available'}
+
+    try:
+        import torch
+        from PIL import Image
+
+        # Decode base64 image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+
+        # Transform and predict
+        img_tensor = ML_TRANSFORM(img).unsqueeze(0)
+
+        with torch.no_grad():
+            period_out, decoration_out = ML_MODEL(img_tensor)
+            period_probs = torch.softmax(period_out, dim=1)
+            decoration_probs = torch.softmax(decoration_out, dim=1)
+
+        # Get all predictions with probabilities
+        period_results = []
+        for i, prob in enumerate(period_probs[0]):
+            period_results.append({
+                'class': ML_ENCODERS['period_classes'][i],
+                'confidence': float(prob) * 100
+            })
+        period_results.sort(key=lambda x: -x['confidence'])
+
+        decoration_results = []
+        for i, prob in enumerate(decoration_probs[0]):
+            decoration_results.append({
+                'class': ML_ENCODERS['decoration_classes'][i],
+                'confidence': float(prob) * 100
+            })
+        decoration_results.sort(key=lambda x: -x['confidence'])
+
+        return {
+            'success': True,
+            'period': period_results,
+            'decoration': decoration_results,
+            'predicted_period': period_results[0]['class'],
+            'predicted_decoration': decoration_results[0]['class'],
+            'period_confidence': period_results[0]['confidence'],
+            'decoration_confidence': decoration_results[0]['confidence']
+        }
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def load_embeddings():
+    """Load pre-computed image embeddings for similarity search."""
+    global EMBEDDINGS, EMBEDDINGS_METADATA, FEATURE_EXTRACTOR
+
+    if EMBEDDINGS is not None:
+        return True
+
+    embeddings_path = ML_MODEL_DIR / "image_embeddings.npz"
+    metadata_path = ML_MODEL_DIR / "embeddings_metadata.json"
+
+    if not embeddings_path.exists() or not metadata_path.exists():
+        print("Embeddings not found. Run compute_embeddings.py first.")
+        return False
+
+    try:
+        import torch
+        import torch.nn as nn
+        from torchvision import transforms, models
+
+        # Load embeddings
+        data = np.load(embeddings_path)
+        EMBEDDINGS = data['embeddings']
+
+        # Load metadata
+        with open(metadata_path) as f:
+            EMBEDDINGS_METADATA = json.load(f)
+
+        # Create feature extractor for new images
+        class FeatureExtractor(nn.Module):
+            def __init__(self):
+                super().__init__()
+                resnet = models.resnet18(weights=None)
+                self.features = nn.Sequential(*list(resnet.children())[:-1])
+
+            def forward(self, x):
+                x = self.features(x)
+                return x.view(x.size(0), -1)
+
+        FEATURE_EXTRACTOR = FeatureExtractor()
+        # Load weights from pretrained model
+        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        FEATURE_EXTRACTOR.features.load_state_dict(
+            nn.Sequential(*list(resnet.children())[:-1]).state_dict()
+        )
+        FEATURE_EXTRACTOR.eval()
+
+        print(f"Loaded {len(EMBEDDINGS)} image embeddings for similarity search")
+        return True
+
+    except Exception as e:
+        print(f"Error loading embeddings: {e}")
+        return False
+
+
+def find_similar_images(image_data, top_k=20, threshold=0.5):
+    """Find visually similar images using cosine similarity."""
+    if not load_embeddings():
+        return {'error': 'Embeddings not available'}
+
+    try:
+        import torch
+        from torchvision import transforms
+        from PIL import Image
+
+        # Decode image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+
+        # Transform
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        img_tensor = transform(img).unsqueeze(0)
+
+        # Extract embedding
+        with torch.no_grad():
+            query_embedding = FEATURE_EXTRACTOR(img_tensor).numpy().flatten()
+            query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
+
+        # Compute cosine similarities
+        similarities = np.dot(EMBEDDINGS, query_embedding)
+
+        # Get top matches
+        top_indices = np.argsort(similarities)[::-1][:top_k]
+
+        # Build results
+        similar_items = []
+        for idx in top_indices:
+            sim_score = float(similarities[idx])
+            if sim_score >= threshold:
+                item_meta = EMBEDDINGS_METADATA['items'][idx]
+                similar_items.append({
+                    'id': item_meta['id'],
+                    'image_path': item_meta['image_path'],
+                    'macro_period': item_meta['macro_period'],
+                    'period': item_meta['period'],
+                    'decoration': item_meta['decoration'],
+                    'vessel_type': item_meta['vessel_type'],
+                    'collection': item_meta['collection'],
+                    'page_ref': item_meta['page_ref'],
+                    'source_pdf': item_meta['source_pdf'],
+                    'similarity': round(sim_score * 100, 1)
+                })
+
+        # Generate analysis
+        analysis = generate_similarity_analysis(similar_items)
+
+        return {
+            'success': True,
+            'similar_items': similar_items,
+            'total_compared': len(EMBEDDINGS),
+            'analysis': analysis,
+            'statistics': compute_similarity_statistics(similar_items)
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
+def generate_similarity_analysis(similar_items):
+    """Generate a descriptive archaeological analysis based on similar items found."""
+    if not similar_items:
+        return {
+            'text': "No similar ceramics were found in the database with sufficient visual similarity.",
+            'period_suggestion': None,
+            'references': []
+        }
+
+    # Analyze period distribution
+    periods = {}
+    decorations = {}
+    collections = {}
+    references = []
+
+    for item in similar_items[:10]:  # Use top 10 for analysis
+        if item['macro_period']:
+            periods[item['macro_period']] = periods.get(item['macro_period'], 0) + 1
+        if item['decoration']:
+            decorations[item['decoration']] = decorations.get(item['decoration'], 0) + 1
+        if item['collection']:
+            collections[item['collection']] = collections.get(item['collection'], 0) + 1
+
+        # Build references
+        if item['page_ref'] and item['source_pdf']:
+            ref = {
+                'id': item['id'],
+                'collection': item['collection'],
+                'page_ref': item['page_ref'],
+                'source_pdf': item['source_pdf']
+            }
+            if ref not in references:
+                references.append(ref)
+
+    # Determine most likely period
+    suggested_period = max(periods.items(), key=lambda x: x[1])[0] if periods else None
+    period_confidence = (periods.get(suggested_period, 0) / len(similar_items[:10]) * 100) if suggested_period else 0
+
+    # Determine decoration type
+    suggested_decoration = max(decorations.items(), key=lambda x: x[1])[0] if decorations else None
+
+    # Build sites mentioned
+    sites_by_collection = {
+        'Degli_Espositi': 'Hili (UAE)',
+        'Righetti': 'Hili 8 (UAE)',
+        'Pellegrino': 'Masafi, Dibba, Tell Abraq (UAE/Oman)'
+    }
+
+    sites = [sites_by_collection.get(col, col) for col in collections.keys()]
+
+    # Generate text
+    text_parts = []
+
+    if suggested_period:
+        text_parts.append(f"Based on visual similarity analysis, this ceramic fragment most likely dates to the **{suggested_period}** period ({period_confidence:.0f}% confidence based on top matches).")
+
+    if suggested_decoration:
+        text_parts.append(f"The decoration style appears to be **{suggested_decoration}**.")
+
+    if sites:
+        text_parts.append(f"Similar ceramics have been found at archaeological sites including: **{', '.join(sites)}**.")
+
+    if similar_items:
+        top_match = similar_items[0]
+        text_parts.append(f"The closest visual match ({top_match['similarity']}% similarity) is **{top_match['id']}** from the {top_match['collection']} collection.")
+
+    if references:
+        text_parts.append(f"For bibliographic references, see the linked PDF documents below.")
+
+    return {
+        'text': ' '.join(text_parts),
+        'period_suggestion': suggested_period,
+        'period_confidence': period_confidence,
+        'decoration_suggestion': suggested_decoration,
+        'sites': sites,
+        'references': references[:5]  # Top 5 references
+    }
+
+
+def compute_similarity_statistics(similar_items):
+    """Compute statistics for the similarity results."""
+    if not similar_items:
+        return {}
+
+    periods = {}
+    decorations = {}
+    collections = {}
+    similarities = []
+
+    for item in similar_items:
+        similarities.append(item['similarity'])
+        if item['macro_period']:
+            periods[item['macro_period']] = periods.get(item['macro_period'], 0) + 1
+        if item['decoration']:
+            decorations[item['decoration']] = decorations.get(item['decoration'], 0) + 1
+        if item['collection']:
+            collections[item['collection']] = collections.get(item['collection'], 0) + 1
+
+    return {
+        'period_distribution': periods,
+        'decoration_distribution': decorations,
+        'collection_distribution': collections,
+        'similarity_range': {
+            'min': min(similarities) if similarities else 0,
+            'max': max(similarities) if similarities else 0,
+            'avg': sum(similarities) / len(similarities) if similarities else 0
+        }
+    }
+
 
 DEFAULT_CONFIG = {
     "collections": {
@@ -785,6 +1149,61 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': False, 'error': 'Field and value required'})
             return
 
+        # ML Classification endpoint (public)
+        if parsed.path == '/api/ml/classify':
+            image_data = post_data.get('image')
+            if not image_data:
+                self.send_json({'error': 'No image provided'}, 400)
+                return
+
+            result = classify_image(image_data)
+            self.send_json(result)
+            return
+
+        # Image Similarity Search endpoint
+        if parsed.path == '/api/ml/similar':
+            image_data = post_data.get('image')
+            top_k = post_data.get('top_k', 20)
+            threshold = post_data.get('threshold', 0.3)
+
+            if not image_data:
+                self.send_json({'error': 'No image provided'}, 400)
+                return
+
+            result = find_similar_images(image_data, top_k=top_k, threshold=threshold)
+            self.send_json(result)
+            return
+
+        # Get all images for carousel animation
+        if parsed.path == '/api/ml/all-images':
+            try:
+                if EMBEDDINGS_METADATA:
+                    images = [{'id': item['id'], 'image_path': item['image_path']}
+                              for item in EMBEDDINGS_METADATA['items']]
+                else:
+                    # Load from database
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, image_path FROM items WHERE image_path != ''")
+                    images = [{'id': row[0], 'image_path': row[1]} for row in cursor.fetchall()]
+                    conn.close()
+                self.send_json({'images': images, 'total': len(images)})
+            except Exception as e:
+                self.send_json({'error': str(e)}, 500)
+            return
+
+        # Check ML model status
+        if parsed.path == '/api/ml/status':
+            model_exists = ML_MODEL_PATH.exists()
+            encoders_exist = ML_ENCODERS_PATH.exists()
+            self.send_json({
+                'available': model_exists and encoders_exist,
+                'model_loaded': ML_MODEL is not None,
+                'model_path': str(ML_MODEL_PATH),
+                'encoders_path': str(ML_ENCODERS_PATH)
+            })
+            return
+
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
@@ -1393,6 +1812,7 @@ def get_viewer_html(role):
         }}
         .action-btn:hover {{ transform: scale(1.05); }}
         .pdf-btn {{ background: linear-gradient(135deg, #4caf50, #45a049); }}
+        .ml-btn {{ background: linear-gradient(135deg, #9c27b0, #6a1b9a); }}
         .delete-btn {{ background: linear-gradient(135deg, #f44336, #d32f2f); }}
         .select-btn {{ background: linear-gradient(135deg, #9c27b0, #7b1fa2); }}
         .select-btn.active {{ background: linear-gradient(135deg, #ff9800, #f57c00); }}
@@ -1400,6 +1820,304 @@ def get_viewer_html(role):
         .batch-btn {{ background: linear-gradient(135deg, #ff5722, #e64a19); display: none; }}
         .batch-btn.visible {{ display: inline-block; }}
         .logout-btn {{ background: linear-gradient(135deg, #607d8b, #455a64); }}
+
+        /* ML Classifier Modal */
+        .ml-modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            flex-direction: column;
+        }}
+        .ml-modal.active {{ display: flex; }}
+        .ml-header {{
+            background: linear-gradient(135deg, #9c27b0, #6a1b9a);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .ml-header h2 {{ color: white; margin: 0; font-size: 1.3em; }}
+        .ml-close {{
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }}
+        .ml-close:hover {{ background: rgba(255,255,255,0.3); }}
+        .ml-content {{
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            padding: 20px;
+            gap: 20px;
+        }}
+        .ml-upload-section {{
+            width: 400px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }}
+        .ml-drop-zone {{
+            border: 3px dashed rgba(156, 39, 176, 0.5);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(156, 39, 176, 0.1);
+        }}
+        .ml-drop-zone:hover, .ml-drop-zone.dragover {{
+            border-color: #9c27b0;
+            background: rgba(156, 39, 176, 0.2);
+        }}
+        .ml-drop-zone p {{ color: #aaa; margin: 10px 0; }}
+        .ml-drop-zone .icon {{ font-size: 3em; color: #9c27b0; }}
+        .ml-preview {{
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            display: none;
+        }}
+        .ml-preview.visible {{ display: block; margin: 10px auto; }}
+        .ml-classify-btn {{
+            background: linear-gradient(135deg, #9c27b0, #6a1b9a);
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+        }}
+        .ml-classify-btn:hover {{ transform: scale(1.02); }}
+        .ml-classify-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .ml-results {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            display: none;
+        }}
+        .ml-results.visible {{ display: block; }}
+        .ml-results h3 {{ color: #9c27b0; margin-bottom: 15px; }}
+        .ml-result-item {{
+            background: rgba(255,255,255,0.08);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }}
+        .ml-result-item .label {{ color: #888; font-size: 0.8em; margin-bottom: 5px; }}
+        .ml-result-item .value {{ color: #fff; font-size: 1.2em; font-weight: bold; }}
+        .ml-result-item .confidence {{
+            margin-top: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            height: 10px;
+            overflow: hidden;
+        }}
+        .ml-result-item .confidence-bar {{
+            height: 100%;
+            background: linear-gradient(90deg, #9c27b0, #e91e63);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }}
+        .ml-result-item .confidence-text {{ font-size: 0.75em; color: #aaa; margin-top: 4px; }}
+        .ml-threshold {{
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }}
+        .ml-threshold label {{ color: #aaa; font-size: 0.85em; }}
+        .ml-threshold input[type="range"] {{
+            width: 100%;
+            margin: 10px 0;
+            accent-color: #9c27b0;
+        }}
+        .ml-threshold .threshold-value {{ color: #9c27b0; font-weight: bold; }}
+        .ml-filter-btn {{
+            background: linear-gradient(135deg, #4caf50, #45a049);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%;
+        }}
+        .ml-filter-btn:hover {{ transform: scale(1.02); }}
+        .ml-matches-section {{
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+        }}
+        .ml-matches-section h3 {{ color: #4caf50; margin-bottom: 15px; }}
+        .ml-matches-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }}
+        .ml-match-card {{
+            background: rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .ml-match-card:hover {{ background: rgba(255,255,255,0.15); transform: translateY(-3px); }}
+        .ml-match-card img {{
+            width: 100%;
+            height: 120px;
+            object-fit: contain;
+            border-radius: 5px;
+            background: rgba(0,0,0,0.3);
+        }}
+        .ml-match-card .match-id {{ color: #fff; font-size: 0.8em; margin-top: 8px; }}
+        .ml-match-card .match-period {{ color: #ff9800; font-size: 0.7em; }}
+        .ml-match-card .match-confidence {{ color: #9c27b0; font-size: 0.75em; font-weight: bold; }}
+
+        /* ML Carousel Animation */
+        .ml-carousel-container {{
+            position: relative;
+            height: 120px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }}
+        .ml-carousel {{
+            display: flex;
+            gap: 10px;
+            position: absolute;
+            animation: carouselScroll 30s linear infinite;
+        }}
+        .ml-carousel.paused {{ animation-play-state: paused; }}
+        .ml-carousel-item {{
+            width: 80px;
+            height: 100px;
+            flex-shrink: 0;
+            border-radius: 5px;
+            overflow: hidden;
+            transition: all 0.3s;
+            opacity: 0.5;
+        }}
+        .ml-carousel-item.analyzing {{
+            opacity: 1;
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(156, 39, 176, 0.8);
+        }}
+        .ml-carousel-item.matched {{
+            opacity: 1;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.8);
+        }}
+        .ml-carousel-item img {{
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: rgba(255,255,255,0.05);
+        }}
+        @keyframes carouselScroll {{
+            0% {{ transform: translateX(0); }}
+            100% {{ transform: translateX(-50%); }}
+        }}
+        .ml-progress {{
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }}
+        .ml-progress-bar {{
+            height: 100%;
+            background: linear-gradient(90deg, #9c27b0, #e91e63);
+            width: 0%;
+            transition: width 0.3s;
+        }}
+        .ml-progress-text {{
+            font-size: 0.75em;
+            color: #888;
+            text-align: center;
+        }}
+
+        /* ML Analysis Section */
+        .ml-analysis {{
+            background: linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.1));
+            border: 1px solid rgba(156, 39, 176, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .ml-analysis h3 {{
+            color: #e91e63;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .ml-analysis-text {{
+            color: #ddd;
+            line-height: 1.7;
+            font-size: 0.95em;
+        }}
+        .ml-analysis-text strong {{ color: #fff; }}
+        .ml-references {{
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }}
+        .ml-references h4 {{ color: #4caf50; font-size: 0.9em; margin-bottom: 10px; }}
+        .ml-ref-link {{
+            display: inline-block;
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            margin: 3px;
+            cursor: pointer;
+            text-decoration: none;
+        }}
+        .ml-ref-link:hover {{ background: rgba(76, 175, 80, 0.4); }}
+
+        /* ML Statistics Chart */
+        .ml-stats-section {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }}
+        .ml-stats-section h4 {{ color: #4fc3f7; margin-bottom: 15px; }}
+        .ml-chart-container {{
+            height: 200px;
+            position: relative;
+        }}
+        .ml-stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        .ml-stat-box {{
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }}
+        .ml-stat-box .stat-value {{ font-size: 1.5em; font-weight: bold; color: #4fc3f7; }}
+        .ml-stat-box .stat-label {{ font-size: 0.75em; color: #888; }}
+
         .no-image {{ color: #666; text-align: center; padding: 20px; }}
         .item-checkbox {{
             width: 18px;
@@ -1634,6 +2352,7 @@ def get_viewer_html(role):
         .pdf-nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="header">
@@ -1642,6 +2361,7 @@ def get_viewer_html(role):
         <div class="header-buttons">
             <span class="user-badge">{'ADMIN' if is_admin else 'VIEWER'}</span>
             <span class="selection-count" id="selectionCount">0 sel.</span>
+            <button class="action-btn ml-btn" onclick="openMlClassifier()">&#129504; ML Classify</button>
             <button class="action-btn pdf-btn" onclick="openPdfAtPage()">&#128196; PDF</button>
             {'<button class="action-btn select-btn" id="selectBtn" onclick="toggleSelectMode()">&#9745; Select</button>' if is_admin else ''}
             {admin_buttons}
@@ -1824,6 +2544,75 @@ def get_viewer_html(role):
             </div>
             <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper" style="display:none;">
                 <canvas id="pdfCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ML Classifier Modal -->
+    <div class="ml-modal" id="mlModal">
+        <div class="ml-header">
+            <h2>&#129504; Visual Similarity Search</h2>
+            <button class="ml-close" onclick="closeMlModal()">&#10005; Close</button>
+        </div>
+        <div class="ml-content">
+            <div class="ml-upload-section">
+                <h3 style="color: #9c27b0; margin-bottom: 10px;">Upload Ceramic Image</h3>
+                <div class="ml-drop-zone" id="mlDropZone" onclick="document.getElementById('mlFileInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <p>Click or drag an image here</p>
+                    <p style="font-size: 0.8em;">Supports JPG, PNG</p>
+                </div>
+                <input type="file" id="mlFileInput" accept="image/*" style="display: none;" onchange="handleMlFile(event)">
+                <img class="ml-preview" id="mlPreview">
+
+                <div class="ml-threshold" style="margin-top: 15px;">
+                    <label>Similarity Threshold: <span class="threshold-value" id="thresholdValue">30%</span></label>
+                    <input type="range" id="mlThreshold" min="0" max="100" value="30"
+                           oninput="updateThreshold(this.value)">
+                </div>
+
+                <button class="ml-classify-btn" id="mlClassifyBtn" onclick="runSimilaritySearch()" disabled>
+                    &#128269; Find Similar Decorations
+                </button>
+
+                <!-- Carousel Section -->
+                <div id="mlCarouselSection" style="display: none; margin-top: 20px;">
+                    <div class="ml-progress">
+                        <div class="ml-progress-bar" id="mlProgressBar"></div>
+                    </div>
+                    <div class="ml-progress-text" id="mlProgressText">Analyzing database...</div>
+                    <div class="ml-carousel-container">
+                        <div class="ml-carousel" id="mlCarousel"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ml-matches-section" id="mlMatchesSection">
+                <!-- Analysis Section -->
+                <div class="ml-analysis" id="mlAnalysis" style="display: none;">
+                    <h3>&#128220; Archaeological Analysis</h3>
+                    <div class="ml-analysis-text" id="mlAnalysisText"></div>
+                    <div class="ml-references" id="mlReferences"></div>
+                </div>
+
+                <!-- Statistics Section -->
+                <div class="ml-stats-section" id="mlStatsSection" style="display: none;">
+                    <h4>&#128202; Distribution Statistics</h4>
+                    <div class="ml-chart-container">
+                        <canvas id="mlChart"></canvas>
+                    </div>
+                    <div class="ml-stats-grid" id="mlStatsGrid"></div>
+                </div>
+
+                <h3>&#128270; Visually Similar Ceramics <span id="mlMatchCount">(0)</span></h3>
+                <p style="color: #888; font-size: 0.85em; margin-bottom: 15px;">
+                    Ranked by visual similarity based on decoration patterns
+                </p>
+                <div class="ml-matches-grid" id="mlMatchesGrid">
+                    <p style="color: #666; text-align: center; grid-column: 1/-1;">
+                        Upload an image to find visually similar ceramics
+                    </p>
+                </div>
             </div>
         </div>
     </div>
@@ -2318,7 +3107,396 @@ def get_viewer_html(role):
             if (e.key === 'Escape' && document.getElementById('pdfModal').classList.contains('active')) {{
                 closePdfModal();
             }}
+            if (e.key === 'Escape' && document.getElementById('mlModal').classList.contains('active')) {{
+                closeMlModal();
+            }}
         }});
+
+        // ============ ML SIMILARITY SEARCH FUNCTIONS ============
+        let mlImageData = null;
+        let mlSimilarityResult = null;
+        let mlChart = null;
+        let allDbImages = [];
+
+        function openMlClassifier() {{
+            document.getElementById('mlModal').classList.add('active');
+            setupMlDropZone();
+            loadCarouselImages();
+        }}
+
+        function closeMlModal() {{
+            document.getElementById('mlModal').classList.remove('active');
+            // Reset state
+            document.getElementById('mlCarouselSection').style.display = 'none';
+            document.getElementById('mlAnalysis').style.display = 'none';
+            document.getElementById('mlStatsSection').style.display = 'none';
+        }}
+
+        async function loadCarouselImages() {{
+            if (allDbImages.length > 0) return;
+            try {{
+                const response = await fetch('/api/ml/all-images', {{ method: 'POST' }});
+                const result = await response.json();
+                allDbImages = result.images || [];
+            }} catch (e) {{
+                console.error('Failed to load carousel images:', e);
+            }}
+        }}
+
+        function setupMlDropZone() {{
+            const dropZone = document.getElementById('mlDropZone');
+            if (dropZone._initialized) return;
+            dropZone._initialized = true;
+
+            dropZone.addEventListener('dragover', (e) => {{
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            }});
+
+            dropZone.addEventListener('dragleave', () => {{
+                dropZone.classList.remove('dragover');
+            }});
+
+            dropZone.addEventListener('drop', (e) => {{
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {{
+                    processImageFile(files[0]);
+                }}
+            }});
+        }}
+
+        function handleMlFile(event) {{
+            const file = event.target.files[0];
+            if (file) {{
+                processImageFile(file);
+            }}
+        }}
+
+        function processImageFile(file) {{
+            if (!file.type.startsWith('image/')) {{
+                alert('Please select an image file');
+                return;
+            }}
+
+            const reader = new FileReader();
+            reader.onload = (e) => {{
+                mlImageData = e.target.result;
+                const preview = document.getElementById('mlPreview');
+                preview.src = mlImageData;
+                preview.classList.add('visible');
+                document.getElementById('mlClassifyBtn').disabled = false;
+                // Hide previous results
+                document.getElementById('mlAnalysis').style.display = 'none';
+                document.getElementById('mlStatsSection').style.display = 'none';
+                document.getElementById('mlMatchesGrid').innerHTML = '<p style="color: #666; text-align: center; grid-column: 1/-1;">Click "Find Similar Decorations" to search</p>';
+            }};
+            reader.readAsDataURL(file);
+        }}
+
+        function updateThreshold(value) {{
+            document.getElementById('thresholdValue').textContent = value + '%';
+        }}
+
+        async function runSimilaritySearch() {{
+            if (!mlImageData) return;
+
+            const btn = document.getElementById('mlClassifyBtn');
+            btn.disabled = true;
+            btn.innerHTML = '&#9203; Analyzing...';
+
+            // Show carousel section
+            const carouselSection = document.getElementById('mlCarouselSection');
+            carouselSection.style.display = 'block';
+
+            // Build and animate carousel
+            await buildAndAnimateCarousel();
+
+            try {{
+                const threshold = parseInt(document.getElementById('mlThreshold').value) / 100;
+
+                const response = await fetch('/api/ml/similar', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        image: mlImageData,
+                        top_k: 30,
+                        threshold: threshold
+                    }})
+                }});
+
+                const result = await response.json();
+
+                if (result.error) {{
+                    alert('Search error: ' + result.error);
+                    btn.innerHTML = '&#128269; Find Similar Decorations';
+                    btn.disabled = false;
+                    return;
+                }}
+
+                mlSimilarityResult = result;
+
+                // Stop carousel animation
+                document.getElementById('mlCarousel').classList.add('paused');
+                document.getElementById('mlProgressBar').style.width = '100%';
+                document.getElementById('mlProgressText').textContent = 'Analysis complete! Compared ' + result.total_compared + ' images.';
+
+                // Highlight matched items in carousel
+                highlightMatchesInCarousel(result.similar_items);
+
+                // Display analysis
+                displayAnalysis(result.analysis);
+
+                // Display statistics chart
+                displayStatistics(result.statistics, result.similar_items);
+
+                // Display matches
+                displaySimilarMatches(result.similar_items);
+
+            }} catch (err) {{
+                alert('Error: ' + err.message);
+            }} finally {{
+                btn.innerHTML = '&#128269; Find Similar Decorations';
+                btn.disabled = false;
+            }}
+        }}
+
+        async function buildAndAnimateCarousel() {{
+            const carousel = document.getElementById('mlCarousel');
+            const progressBar = document.getElementById('mlProgressBar');
+            const progressText = document.getElementById('mlProgressText');
+
+            // Use database images or data array
+            const images = allDbImages.length > 0 ? allDbImages : data;
+
+            // Build carousel HTML (duplicate for seamless loop)
+            const carouselItems = images.slice(0, 100);
+            carousel.innerHTML = [...carouselItems, ...carouselItems].map((item, i) => `
+                <div class="ml-carousel-item" data-id="${{item.id}}" data-index="${{i}}">
+                    <img src="${{item.image_path || ''}}" alt="${{item.id}}"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%22100%22><rect fill=%22%23222%22 width=%2280%22 height=%22100%22/></svg>'">
+                </div>
+            `).join('');
+
+            carousel.classList.remove('paused');
+
+            // Animate progress
+            let progress = 0;
+            const progressInterval = setInterval(() => {{
+                progress += 2;
+                if (progress > 95) {{
+                    clearInterval(progressInterval);
+                }}
+                progressBar.style.width = progress + '%';
+                progressText.textContent = 'Analyzing ' + Math.floor(progress * images.length / 100) + ' of ' + images.length + ' images...';
+
+                // Animate "analyzing" effect on carousel items
+                const items = carousel.querySelectorAll('.ml-carousel-item');
+                items.forEach(item => item.classList.remove('analyzing'));
+                const randomIdx = Math.floor(Math.random() * Math.min(items.length, 20));
+                if (items[randomIdx]) items[randomIdx].classList.add('analyzing');
+            }}, 100);
+
+            // Store interval for cleanup
+            carousel._progressInterval = progressInterval;
+        }}
+
+        function highlightMatchesInCarousel(matches) {{
+            const carousel = document.getElementById('mlCarousel');
+            const matchIds = new Set(matches.map(m => m.id));
+
+            carousel.querySelectorAll('.ml-carousel-item').forEach(item => {{
+                item.classList.remove('analyzing');
+                if (matchIds.has(item.dataset.id)) {{
+                    item.classList.add('matched');
+                }}
+            }});
+
+            if (carousel._progressInterval) {{
+                clearInterval(carousel._progressInterval);
+            }}
+        }}
+
+        function displayAnalysis(analysis) {{
+            const analysisSection = document.getElementById('mlAnalysis');
+            const analysisText = document.getElementById('mlAnalysisText');
+            const referencesDiv = document.getElementById('mlReferences');
+
+            if (!analysis || !analysis.text) {{
+                analysisSection.style.display = 'none';
+                return;
+            }}
+
+            // Convert markdown bold to HTML
+            const formattedText = analysis.text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            analysisText.innerHTML = formattedText;
+
+            // Build references
+            if (analysis.references && analysis.references.length > 0) {{
+                referencesDiv.innerHTML = `
+                    <h4>&#128218; Bibliographic References</h4>
+                    ${{analysis.references.map(ref => `
+                        <span class="ml-ref-link" onclick="openPdfReference('${{ref.source_pdf}}', '${{ref.page_ref}}')">
+                            ${{ref.id}} (${{ref.collection}}, ${{ref.page_ref}})
+                        </span>
+                    `).join('')}}
+                `;
+                referencesDiv.style.display = 'block';
+            }} else {{
+                referencesDiv.style.display = 'none';
+            }}
+
+            analysisSection.style.display = 'block';
+        }}
+
+        function openPdfReference(pdfPath, pageRef) {{
+            // Extract page number
+            const pageMatch = pageRef.match(/p+\.?\s*(\d+)/i);
+            const pageNum = pageMatch ? pageMatch[1] : '1';
+            openPdfAtPageDirect(pdfPath, pageNum);
+        }}
+
+        function displayStatistics(stats, items) {{
+            const statsSection = document.getElementById('mlStatsSection');
+            const statsGrid = document.getElementById('mlStatsGrid');
+
+            if (!stats || !items || items.length === 0) {{
+                statsSection.style.display = 'none';
+                return;
+            }}
+
+            // Build stats grid
+            statsGrid.innerHTML = `
+                <div class="ml-stat-box">
+                    <div class="stat-value">${{items.length}}</div>
+                    <div class="stat-label">Similar Found</div>
+                </div>
+                <div class="ml-stat-box">
+                    <div class="stat-value">${{stats.similarity_range.max.toFixed(0)}}%</div>
+                    <div class="stat-label">Best Match</div>
+                </div>
+                <div class="ml-stat-box">
+                    <div class="stat-value">${{stats.similarity_range.avg.toFixed(0)}}%</div>
+                    <div class="stat-label">Avg Similarity</div>
+                </div>
+            `;
+
+            // Build chart
+            const ctx = document.getElementById('mlChart').getContext('2d');
+
+            // Destroy old chart if exists
+            if (mlChart) {{
+                mlChart.destroy();
+            }}
+
+            // Period distribution data
+            const periodData = stats.period_distribution || {{}};
+            const periodLabels = Object.keys(periodData);
+            const periodValues = Object.values(periodData);
+
+            mlChart = new Chart(ctx, {{
+                type: 'bar',
+                data: {{
+                    labels: periodLabels,
+                    datasets: [{{
+                        label: 'Period Distribution',
+                        data: periodValues,
+                        backgroundColor: [
+                            'rgba(156, 39, 176, 0.7)',
+                            'rgba(233, 30, 99, 0.7)',
+                            'rgba(79, 195, 247, 0.7)',
+                            'rgba(255, 152, 0, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(156, 39, 176, 1)',
+                            'rgba(233, 30, 99, 1)',
+                            'rgba(79, 195, 247, 1)',
+                            'rgba(255, 152, 0, 1)'
+                        ],
+                        borderWidth: 1
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{
+                        legend: {{ display: false }},
+                        title: {{
+                            display: true,
+                            text: 'Period Distribution of Similar Ceramics',
+                            color: '#aaa'
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            grid: {{ color: 'rgba(255,255,255,0.1)' }},
+                            ticks: {{ color: '#aaa' }}
+                        }},
+                        x: {{
+                            grid: {{ display: false }},
+                            ticks: {{ color: '#aaa' }}
+                        }}
+                    }}
+                }}
+            }});
+
+            statsSection.style.display = 'block';
+        }}
+
+        function displaySimilarMatches(items) {{
+            const grid = document.getElementById('mlMatchesGrid');
+            document.getElementById('mlMatchCount').textContent = '(' + items.length + ')';
+
+            if (items.length === 0) {{
+                grid.innerHTML = '<p style="color: #888; text-align: center; grid-column: 1/-1;">No visually similar ceramics found above threshold</p>';
+                return;
+            }}
+
+            grid.innerHTML = items.map(item => `
+                <div class="ml-match-card" onclick="selectMlMatch('${{item.id}}')">
+                    <img src="${{item.image_path || ''}}" alt="${{item.id}}"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22120%22><rect fill=%22%23333%22 width=%22150%22 height=%22120%22/><text fill=%22%23666%22 x=%2275%22 y=%2260%22 text-anchor=%22middle%22>No image</text></svg>'">
+                    <div class="match-id">${{item.id}}</div>
+                    <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
+                    <div class="match-confidence">${{item.similarity}}% similar</div>
+                </div>
+            `).join('');
+        }}
+
+        function selectMlMatch(itemId) {{
+            closeMlModal();
+
+            const index = filteredData.findIndex(item => item.id === itemId);
+            if (index >= 0) {{
+                selectItem(index);
+            }} else {{
+                const allIndex = data.findIndex(item => item.id === itemId);
+                if (allIndex >= 0) {{
+                    document.getElementById('filterMacroPeriod').value = '';
+                    document.getElementById('filterPeriod').value = '';
+                    document.getElementById('filterDecoration').value = '';
+                    document.getElementById('filterVesselType').value = '';
+                    document.getElementById('filterPartType').value = '';
+                    document.getElementById('searchInput').value = '';
+                    activeCollection = 'all';
+                    document.querySelectorAll('.collection-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('.collection-tab[data-collection="all"]').classList.add('active');
+                    applyFilters();
+
+                    const newIndex = filteredData.findIndex(item => item.id === itemId);
+                    if (newIndex >= 0) {{
+                        selectItem(newIndex);
+                    }}
+                }}
+            }}
+        }}
+
+        function openPdfAtPageDirect(pdfPath, pageNum) {{
+            // Open PDF viewer directly
+            loadPdf('/' + pdfPath, parseInt(pageNum), '');
+        }}
 
         function openEditModal() {{
             if (!isAdmin || filteredData.length === 0) return;
