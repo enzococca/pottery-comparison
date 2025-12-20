@@ -26,6 +26,66 @@ from datetime import datetime
 import base64
 import io
 
+# PDF Scale extraction (lazy loaded)
+def extract_scale_from_pdf(pdf_path, page_num=None):
+    """
+    Extract scale information from PDF pages.
+    Looks for patterns like:
+    - "1:3", "scala 1:3", "scale 1:3"
+    - "échelle 1:3"
+    - "5 cm" with scale bar annotations
+    Returns list of found scales with page numbers.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return {'error': 'PyMuPDF not installed. Run: pip install pymupdf'}
+
+    if not os.path.exists(pdf_path):
+        return {'error': f'PDF not found: {pdf_path}'}
+
+    scales_found = []
+    scale_patterns = [
+        r'(?:scala|scale|échelle|escala)?\s*(\d+)\s*:\s*(\d+)',  # 1:3, scala 1:3
+        r'(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b',  # 5 cm, 10 mm (scale bar labels)
+    ]
+
+    try:
+        doc = fitz.open(pdf_path)
+        pages_to_check = [page_num - 1] if page_num else range(len(doc))
+
+        for page_idx in pages_to_check:
+            if page_idx < 0 or page_idx >= len(doc):
+                continue
+
+            page = doc[page_idx]
+            text = page.get_text()
+
+            # Look for scale patterns
+            for pattern in scale_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches:
+                    if isinstance(match, tuple) and len(match) == 2:
+                        try:
+                            num, denom = int(match[0]), int(match[1])
+                            if 1 <= num <= 10 and 1 <= denom <= 10:
+                                scale_str = f"{num}:{denom}"
+                                if scale_str not in [s['scale'] for s in scales_found]:
+                                    scales_found.append({
+                                        'scale': scale_str,
+                                        'page': page_idx + 1,
+                                        'ratio': num / denom
+                                    })
+                        except:
+                            pass
+
+        doc.close()
+        return {'scales': scales_found, 'total_pages': len(doc)}
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
 # ML Model imports (lazy loaded)
 ML_MODEL = None
 ML_ENCODERS = None
@@ -502,6 +562,78 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def run_auto_migrations():
+    """Run database migrations automatically on startup"""
+    print("   Checking for database migrations...")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get existing columns in items table
+    cursor.execute("PRAGMA table_info(items)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    # Define new columns to add (column_name, type, default)
+    new_columns = [
+        ("motivo_decorativo", "TEXT", None),
+        ("sintassi_decorativa", "TEXT", None),
+        ("scala_metrica", "TEXT", None),
+        ("larghezza_cm", "REAL", None),
+        ("altezza_cm", "REAL", None),
+        ("calibration_data", "TEXT", None),  # JSON for measurement calibration
+    ]
+
+    added = 0
+    for col_name, col_type, default in new_columns:
+        if col_name not in existing_columns:
+            try:
+                if default is not None:
+                    cursor.execute(f"ALTER TABLE items ADD COLUMN {col_name} {col_type} DEFAULT {default}")
+                else:
+                    cursor.execute(f"ALTER TABLE items ADD COLUMN {col_name} {col_type}")
+                print(f"   + Added column: {col_name}")
+                added += 1
+            except Exception as e:
+                print(f"   ! Error adding {col_name}: {e}")
+
+    # Add vocabulary entries for new fields if not exist
+    vocabulary_entries = [
+        # Motivo decorativo
+        ("motivo_decorativo", "wavy lines"), ("motivo_decorativo", "geometric patterns"),
+        ("motivo_decorativo", "triangular"), ("motivo_decorativo", "crosshatched"),
+        ("motivo_decorativo", "incised lines"), ("motivo_decorativo", "painted bands"),
+        ("motivo_decorativo", "dotted"), ("motivo_decorativo", "zigzag"),
+        ("motivo_decorativo", "chevron"), ("motivo_decorativo", "spiral"),
+        ("motivo_decorativo", "hatched triangles"), ("motivo_decorativo", "pendant triangles"),
+        ("motivo_decorativo", "horizontal bands"), ("motivo_decorativo", "vertical lines"),
+        ("motivo_decorativo", "net pattern"),
+        # Sintassi decorativa
+        ("sintassi_decorativa", "rim band"), ("sintassi_decorativa", "shoulder decoration"),
+        ("sintassi_decorativa", "body decoration"), ("sintassi_decorativa", "base decoration"),
+        ("sintassi_decorativa", "full coverage"), ("sintassi_decorativa", "register division"),
+        ("sintassi_decorativa", "metope arrangement"), ("sintassi_decorativa", "frieze pattern"),
+        ("sintassi_decorativa", "random distribution"), ("sintassi_decorativa", "symmetrical"),
+        ("sintassi_decorativa", "asymmetrical"),
+        # Scala metrica
+        ("scala_metrica", "1:1"), ("scala_metrica", "1:2"), ("scala_metrica", "1:3"),
+        ("scala_metrica", "1:4"), ("scala_metrica", "1:5"), ("scala_metrica", "2:3"),
+    ]
+
+    for field, value in vocabulary_entries:
+        cursor.execute('''
+            INSERT OR IGNORE INTO vocabulary (field, value, count)
+            VALUES (?, ?, 0)
+        ''', (field, value))
+
+    conn.commit()
+    conn.close()
+
+    if added > 0:
+        print(f"   Migration complete: {added} columns added")
+    else:
+        print("   Database schema is up to date")
 
 
 def safe_int(value, default=0):
@@ -987,6 +1119,30 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     self.send_json({'success': True, 'url': pdf_url, 'page': page_num, 'method': 'browser'})
                 else:
                     self.send_json({'error': 'PDF not found'})
+            return
+
+        # Extract scale from PDF
+        if parsed.path.startswith('/api/extract-scale'):
+            collection = query.get('collection', [''])[0]
+            page = query.get('page', [None])[0]
+
+            config = load_config()
+            pdf_path = config.get('collections', {}).get(collection, {}).get('pdf', '')
+
+            if pdf_path:
+                base_path = Path(__file__).parent
+                full_pdf_path = str(base_path / pdf_path)
+
+                page_num = None
+                if page:
+                    page_match = re.search(r'(\d+)', page)
+                    if page_match:
+                        page_num = int(page_match.group(1))
+
+                result = extract_scale_from_pdf(full_pdf_path, page_num)
+                self.send_json(result)
+            else:
+                self.send_json({'error': 'No PDF configured for this collection'})
             return
 
         # Serve static files with caching
@@ -1763,6 +1919,107 @@ def get_viewer_html(role):
             font-size: 1em;
         }}
         .rotate-btn:hover {{ background: rgba(156, 39, 176, 0.9); }}
+
+        /* Measurement Tool Styles */
+        .measure-toolbar {{
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 100;
+        }}
+        .measure-btn {{
+            background: rgba(76, 175, 80, 0.7);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        .measure-btn:hover {{ background: rgba(76, 175, 80, 0.95); }}
+        .measure-btn.active {{ background: #4caf50; box-shadow: 0 0 10px rgba(76, 175, 80, 0.5); }}
+        .measure-btn.calibrate {{ background: rgba(255, 152, 0, 0.7); }}
+        .measure-btn.calibrate:hover {{ background: rgba(255, 152, 0, 0.95); }}
+        .measure-btn.calibrate.active {{ background: #ff9800; }}
+
+        .measure-canvas {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }}
+        .measure-canvas.active {{
+            pointer-events: auto;
+            cursor: crosshair;
+        }}
+
+        .measure-info {{
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 0.85em;
+            z-index: 100;
+            max-width: 300px;
+        }}
+        .measure-info strong {{ color: #4fc3f7; }}
+
+        .calibration-modal {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }}
+        .calibration-modal.active {{ display: flex; }}
+        .calibration-content {{
+            background: #1a1a2e;
+            padding: 25px;
+            border-radius: 10px;
+            max-width: 400px;
+            text-align: center;
+        }}
+        .calibration-content h3 {{ margin-top: 0; color: #4fc3f7; }}
+        .calibration-content input {{
+            width: 100px;
+            padding: 8px;
+            margin: 10px 5px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #0d0d1a;
+            color: white;
+            text-align: center;
+        }}
+        .calibration-content select {{
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #0d0d1a;
+            color: white;
+        }}
+        .calibration-content .btn-row {{
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }}
+
         .metadata-panel {{
             background: rgba(0, 0, 0, 0.4);
             padding: 12px 15px;
@@ -2423,9 +2680,44 @@ def get_viewer_html(role):
                 <button class="nav-btn prev" onclick="navigate(-1)">&#8249;</button>
                 <button class="nav-btn next" onclick="navigate(1)">&#8250;</button>
                 {rotate_buttons}
+                <!-- Measurement Tool -->
+                <div class="measure-toolbar" id="measureToolbar" style="display:none;">
+                    <button class="measure-btn calibrate" id="calibrateBtn" onclick="startCalibration()" title="Calibrate scale">
+                        &#128207; Calibrate
+                    </button>
+                    <button class="measure-btn" id="measureBtn" onclick="toggleMeasure()" title="Measure distance">
+                        &#128207; Measure
+                    </button>
+                    <button class="measure-btn" id="clearMeasureBtn" onclick="clearMeasurements()" title="Clear measurements">
+                        &#10006; Clear
+                    </button>
+                </div>
+                <canvas class="measure-canvas" id="measureCanvas"></canvas>
+                <div class="measure-info" id="measureInfo" style="display:none;"></div>
             </div>
             <div class="metadata-panel">
                 <div class="metadata-grid" id="metadataGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calibration Modal -->
+    <div class="calibration-modal" id="calibrationModal">
+        <div class="calibration-content">
+            <h3>&#128207; Calibration</h3>
+            <p id="calibrationStep">Click two points on a known distance (e.g., scale bar)</p>
+            <div id="calibrationInput" style="display:none;">
+                <p>Enter the real distance between the two points:</p>
+                <input type="number" id="calibrationDistance" step="0.1" min="0.1" value="5">
+                <select id="calibrationUnit">
+                    <option value="cm">cm</option>
+                    <option value="mm">mm</option>
+                    <option value="m">m</option>
+                </select>
+                <div class="btn-row">
+                    <button class="modal-btn cancel" onclick="cancelCalibration()">Cancel</button>
+                    <button class="modal-btn primary" onclick="applyCalibration()">Apply</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2908,16 +3200,27 @@ def get_viewer_html(role):
             document.querySelector('.item-card.active')?.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
 
             const viewer = document.getElementById('imageViewer');
-            const cacheBuster = item.rotated ? `?t=${{Date.now()}}` : '';
+            const cacheBuster = item.rotated ? '?t=' + Date.now() : '';
             viewer.innerHTML = `
                 <div class="image-spinner"></div>
-                <img class="loading" src="${{item.image_path}}${{cacheBuster}}"
-                     onload="this.classList.remove('loading'); this.previousElementSibling.style.display='none';"
+                <img class="loading" id="mainImage" src="${{item.image_path}}${{cacheBuster}}"
+                     onload="this.classList.remove('loading'); this.previousElementSibling.style.display='none'; initMeasureTool();"
                      onerror="this.outerHTML='<div class=\\'no-image\\'><p>Image not found</p></div>'; document.querySelector('.image-spinner')?.remove();">
                 <button class="nav-btn prev" onclick="navigate(-1)">&#8249;</button>
                 <button class="nav-btn next" onclick="navigate(1)">&#8250;</button>
                 {rotate_buttons}
+                <div class="measure-toolbar" id="measureToolbar">
+                    <button class="measure-btn calibrate" id="calibrateBtn" onclick="startCalibration()" title="Calibrate scale">&#128207; Calibrate</button>
+                    <button class="measure-btn" id="measureBtn" onclick="toggleMeasure()" title="Measure distance">&#128207; Measure</button>
+                    <button class="measure-btn" id="clearMeasureBtn" onclick="clearMeasurements()" title="Clear all">&#10006; Clear</button>
+                    <button class="measure-btn" id="saveMeasureBtn" onclick="saveMeasurements()" title="Save measurements" style="background:rgba(33,150,243,0.7);">&#128190; Save</button>
+                    <button class="measure-btn" id="autoScaleBtn" onclick="autoDetectScale()" title="Auto-detect scale from PDF" style="background:rgba(156,39,176,0.7);">&#128269; Auto Scale</button>
+                </div>
+                <canvas class="measure-canvas" id="measureCanvas"></canvas>
+                <div class="measure-info" id="measureInfo" style="display:none;"></div>
             `;
+            // Reset measurement state when changing images
+            resetMeasurementState();
 
             const fields = [
                 {{ key: 'id', label: 'ID' }},
@@ -3703,12 +4006,456 @@ def get_viewer_html(role):
             if (e.key === 'p' || e.key === 'P') openPdfAtPage();
             if (isAdmin && (e.key === 'e' || e.key === 'E')) openEditModal();
             if (isAdmin && (e.key === 'r' || e.key === 'R')) rotateImage(90);
+            if (e.key === 'm' || e.key === 'M') toggleMeasure();
             if (e.key === 'Escape') {{
                 closeModal('deleteModal');
                 closeModal('editModal');
                 closeModal('batchEditModal');
+                cancelCalibration();
+                if (measureMode) toggleMeasure();
             }}
         }});
+
+        // ============================================
+        // MEASUREMENT TOOL
+        // ============================================
+        let measureMode = false;
+        let calibrationMode = false;
+        let calibrationPoints = [];
+        let measurePoints = [];
+        let measurements = [];
+        let pixelsPerCm = null;  // Will be set after calibration
+        let measureCanvas = null;
+        let measureCtx = null;
+
+        function initMeasureTool() {{
+            const canvas = document.getElementById('measureCanvas');
+            const img = document.getElementById('mainImage');
+            if (!canvas || !img) return;
+
+            measureCanvas = canvas;
+            measureCtx = canvas.getContext('2d');
+
+            // Set canvas size to match image container
+            const viewer = document.getElementById('imageViewer');
+            canvas.width = viewer.clientWidth;
+            canvas.height = viewer.clientHeight;
+
+            // Add mouse events
+            canvas.addEventListener('click', handleMeasureClick);
+            canvas.addEventListener('mousemove', handleMeasureMove);
+
+            // Load existing calibration for this item
+            loadCalibration();
+        }}
+
+        function resetMeasurementState() {{
+            measureMode = false;
+            calibrationMode = false;
+            calibrationPoints = [];
+            measurePoints = [];
+            measurements = [];
+            pixelsPerCm = null;
+
+            const canvas = document.getElementById('measureCanvas');
+            if (canvas) {{
+                canvas.classList.remove('active');
+                const ctx = canvas.getContext('2d');
+                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }}
+
+            const info = document.getElementById('measureInfo');
+            if (info) info.style.display = 'none';
+
+            const calibrateBtn = document.getElementById('calibrateBtn');
+            const measureBtn = document.getElementById('measureBtn');
+            if (calibrateBtn) calibrateBtn.classList.remove('active');
+            if (measureBtn) measureBtn.classList.remove('active');
+        }}
+
+        function loadCalibration() {{
+            const item = filteredData[currentIndex];
+            if (!item) return;
+
+            // Check if item has scala_metrica (scale info)
+            if (item.scala_metrica) {{
+                // Try to parse scale like "1:3" -> means 1cm drawing = 3cm real
+                const match = item.scala_metrica.match(/(\\d+(?:\\.\\d+)?)\s*:\s*(\\d+(?:\\.\\d+)?)/);
+                if (match) {{
+                    const drawingScale = parseFloat(match[1]) / parseFloat(match[2]);
+                    updateMeasureInfo('Scale from metadata: ' + item.scala_metrica + ' (use Calibrate for precise measurements)');
+                }}
+            }}
+
+            // Check if we have saved calibration data
+            if (item.calibration_data) {{
+                try {{
+                    const data = JSON.parse(item.calibration_data);
+                    if (data.pixelsPerCm) {{
+                        pixelsPerCm = data.pixelsPerCm;
+                        updateMeasureInfo('Calibrated: ' + pixelsPerCm.toFixed(2) + ' px/cm');
+                    }}
+                }} catch (e) {{ }}
+            }}
+        }}
+
+        function startCalibration() {{
+            calibrationMode = true;
+            calibrationPoints = [];
+            measureMode = false;
+
+            const canvas = document.getElementById('measureCanvas');
+            if (canvas) canvas.classList.add('active');
+
+            document.getElementById('calibrateBtn').classList.add('active');
+            document.getElementById('measureBtn').classList.remove('active');
+            document.getElementById('calibrationModal').classList.add('active');
+            document.getElementById('calibrationStep').textContent = 'Click the FIRST point on the scale bar';
+            document.getElementById('calibrationInput').style.display = 'none';
+        }}
+
+        function cancelCalibration() {{
+            calibrationMode = false;
+            calibrationPoints = [];
+            document.getElementById('calibrationModal').classList.remove('active');
+            document.getElementById('calibrateBtn').classList.remove('active');
+
+            const canvas = document.getElementById('measureCanvas');
+            if (canvas && !measureMode) canvas.classList.remove('active');
+            redrawMeasurements();
+        }}
+
+        function applyCalibration() {{
+            const distance = parseFloat(document.getElementById('calibrationDistance').value);
+            const unit = document.getElementById('calibrationUnit').value;
+
+            if (calibrationPoints.length !== 2 || !distance || distance <= 0) {{
+                alert('Invalid calibration data');
+                return;
+            }}
+
+            // Convert to cm
+            let distanceCm = distance;
+            if (unit === 'mm') distanceCm = distance / 10;
+            if (unit === 'm') distanceCm = distance * 100;
+
+            // Calculate pixels per cm
+            const dx = calibrationPoints[1].x - calibrationPoints[0].x;
+            const dy = calibrationPoints[1].y - calibrationPoints[0].y;
+            const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+            pixelsPerCm = pixelDistance / distanceCm;
+
+            updateMeasureInfo('Calibrated: ' + pixelsPerCm.toFixed(2) + ' px/cm (' + distanceCm.toFixed(1) + ' cm reference)');
+
+            calibrationMode = false;
+            document.getElementById('calibrationModal').classList.remove('active');
+            document.getElementById('calibrateBtn').classList.remove('active');
+
+            const canvas = document.getElementById('measureCanvas');
+            if (canvas && !measureMode) canvas.classList.remove('active');
+
+            redrawMeasurements();
+        }}
+
+        function toggleMeasure() {{
+            measureMode = !measureMode;
+            measurePoints = [];
+
+            const canvas = document.getElementById('measureCanvas');
+            const btn = document.getElementById('measureBtn');
+
+            if (measureMode) {{
+                if (!pixelsPerCm) {{
+                    updateMeasureInfo('&#9888; Not calibrated! Use Calibrate first for accurate measurements.');
+                }}
+                canvas.classList.add('active');
+                btn.classList.add('active');
+            }} else {{
+                canvas.classList.remove('active');
+                btn.classList.remove('active');
+            }}
+        }}
+
+        function handleMeasureClick(e) {{
+            if (!measureMode && !calibrationMode) return;
+
+            const rect = measureCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (calibrationMode) {{
+                calibrationPoints.push({{ x, y }});
+                redrawMeasurements();
+
+                if (calibrationPoints.length === 1) {{
+                    document.getElementById('calibrationStep').textContent = 'Click the SECOND point on the scale bar';
+                }} else if (calibrationPoints.length === 2) {{
+                    document.getElementById('calibrationStep').textContent = 'Enter the known distance:';
+                    document.getElementById('calibrationInput').style.display = 'block';
+                }}
+            }} else if (measureMode) {{
+                measurePoints.push({{ x, y }});
+
+                if (measurePoints.length === 2) {{
+                    // Calculate and store measurement
+                    const dx = measurePoints[1].x - measurePoints[0].x;
+                    const dy = measurePoints[1].y - measurePoints[0].y;
+                    const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+
+                    let realDistance = null;
+                    let displayText = pixelDistance.toFixed(1) + ' px';
+
+                    if (pixelsPerCm) {{
+                        realDistance = pixelDistance / pixelsPerCm;
+                        displayText = realDistance.toFixed(2) + ' cm (' + pixelDistance.toFixed(0) + ' px)';
+                    }}
+
+                    measurements.push({{
+                        points: [...measurePoints],
+                        pixelDistance: pixelDistance,
+                        realDistance: realDistance,
+                        displayText: displayText
+                    }});
+
+                    updateMeasureInfo('Last measurement: ' + displayText + ' | Total: ' + measurements.length + ' measurements');
+                    measurePoints = [];
+                    redrawMeasurements();
+                }} else {{
+                    redrawMeasurements();
+                }}
+            }}
+        }}
+
+        function handleMeasureMove(e) {{
+            if (!measureMode && !calibrationMode) return;
+            if ((measureMode && measurePoints.length !== 1) && (calibrationMode && calibrationPoints.length !== 1)) return;
+
+            const rect = measureCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            redrawMeasurements();
+
+            // Draw line to cursor
+            measureCtx.beginPath();
+            measureCtx.strokeStyle = calibrationMode ? '#ff9800' : '#4caf50';
+            measureCtx.lineWidth = 2;
+            measureCtx.setLineDash([5, 5]);
+
+            const startPoint = calibrationMode ? calibrationPoints[0] : measurePoints[0];
+            if (startPoint) {{
+                measureCtx.moveTo(startPoint.x, startPoint.y);
+                measureCtx.lineTo(x, y);
+                measureCtx.stroke();
+
+                // Show distance
+                const dx = x - startPoint.x;
+                const dy = y - startPoint.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                let text = dist.toFixed(0) + ' px';
+                if (pixelsPerCm && measureMode) {{
+                    text = (dist / pixelsPerCm).toFixed(2) + ' cm';
+                }}
+
+                measureCtx.setLineDash([]);
+                measureCtx.font = '14px Arial';
+                measureCtx.fillStyle = calibrationMode ? '#ff9800' : '#4caf50';
+                measureCtx.fillText(text, (startPoint.x + x) / 2 + 10, (startPoint.y + y) / 2 - 10);
+            }}
+        }}
+
+        function redrawMeasurements() {{
+            if (!measureCtx) return;
+            measureCtx.clearRect(0, 0, measureCanvas.width, measureCanvas.height);
+            measureCtx.setLineDash([]);
+
+            // Draw calibration points
+            calibrationPoints.forEach((p, i) => {{
+                measureCtx.beginPath();
+                measureCtx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+                measureCtx.fillStyle = '#ff9800';
+                measureCtx.fill();
+                measureCtx.font = '12px Arial';
+                measureCtx.fillText('C' + (i + 1), p.x + 10, p.y - 10);
+            }});
+
+            // Draw calibration line
+            if (calibrationPoints.length === 2) {{
+                measureCtx.beginPath();
+                measureCtx.moveTo(calibrationPoints[0].x, calibrationPoints[0].y);
+                measureCtx.lineTo(calibrationPoints[1].x, calibrationPoints[1].y);
+                measureCtx.strokeStyle = '#ff9800';
+                measureCtx.lineWidth = 2;
+                measureCtx.stroke();
+            }}
+
+            // Draw saved measurements
+            measurements.forEach((m, i) => {{
+                measureCtx.beginPath();
+                measureCtx.moveTo(m.points[0].x, m.points[0].y);
+                measureCtx.lineTo(m.points[1].x, m.points[1].y);
+                measureCtx.strokeStyle = '#4caf50';
+                measureCtx.lineWidth = 2;
+                measureCtx.stroke();
+
+                // End points
+                m.points.forEach(p => {{
+                    measureCtx.beginPath();
+                    measureCtx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    measureCtx.fillStyle = '#4caf50';
+                    measureCtx.fill();
+                }});
+
+                // Label
+                const midX = (m.points[0].x + m.points[1].x) / 2;
+                const midY = (m.points[0].y + m.points[1].y) / 2;
+                measureCtx.font = 'bold 12px Arial';
+                measureCtx.fillStyle = '#fff';
+                measureCtx.strokeStyle = '#000';
+                measureCtx.lineWidth = 3;
+                measureCtx.strokeText(m.displayText, midX + 5, midY - 5);
+                measureCtx.fillText(m.displayText, midX + 5, midY - 5);
+            }});
+
+            // Draw current measurement point
+            measurePoints.forEach((p, i) => {{
+                measureCtx.beginPath();
+                measureCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                measureCtx.fillStyle = '#4caf50';
+                measureCtx.fill();
+            }});
+        }}
+
+        function clearMeasurements() {{
+            measurements = [];
+            calibrationPoints = [];
+            measurePoints = [];
+            redrawMeasurements();
+            updateMeasureInfo('Measurements cleared');
+        }}
+
+        function updateMeasureInfo(text) {{
+            const info = document.getElementById('measureInfo');
+            if (info) {{
+                info.innerHTML = text;
+                info.style.display = 'block';
+            }}
+        }}
+
+        function saveMeasurements() {{
+            if (!isAdmin) {{
+                alert('Only admins can save measurements');
+                return;
+            }}
+
+            const item = filteredData[currentIndex];
+            if (!item) return;
+
+            // Calculate width and height from measurements if we have calibration
+            let width = null, height = null;
+
+            if (pixelsPerCm && measurements.length > 0) {{
+                // Find the largest horizontal and vertical measurements
+                measurements.forEach(m => {{
+                    const dx = Math.abs(m.points[1].x - m.points[0].x);
+                    const dy = Math.abs(m.points[1].y - m.points[0].y);
+
+                    // If mostly horizontal (dx > dy), could be width
+                    if (dx > dy && m.realDistance) {{
+                        if (!width || m.realDistance > width) width = m.realDistance;
+                    }}
+                    // If mostly vertical, could be height
+                    if (dy > dx && m.realDistance) {{
+                        if (!height || m.realDistance > height) height = m.realDistance;
+                    }}
+                }});
+            }}
+
+            // Save calibration and measurements
+            const calibrationData = JSON.stringify({{
+                pixelsPerCm: pixelsPerCm,
+                measurements: measurements.map(m => ({{
+                    points: m.points,
+                    realDistance: m.realDistance
+                }}))
+            }});
+
+            fetch('/api/v1/items/' + item.id, {{
+                method: 'PUT',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    calibration_data: calibrationData,
+                    larghezza_cm: width ? width.toFixed(2) : item.larghezza_cm,
+                    altezza_cm: height ? height.toFixed(2) : item.altezza_cm
+                }})
+            }})
+            .then(r => r.json())
+            .then(result => {{
+                if (result.success) {{
+                    updateMeasureInfo('&#10004; Measurements saved! Width: ' + (width ? width.toFixed(2) + ' cm' : 'N/A') + ', Height: ' + (height ? height.toFixed(2) + ' cm' : 'N/A'));
+                    // Update local data
+                    item.calibration_data = calibrationData;
+                    if (width) item.larghezza_cm = width.toFixed(2);
+                    if (height) item.altezza_cm = height.toFixed(2);
+                    selectItem(currentIndex);  // Refresh display
+                }} else {{
+                    alert('Error saving: ' + (result.error || 'Unknown error'));
+                }}
+            }})
+            .catch(err => alert('Error: ' + err));
+        }}
+
+        function autoDetectScale() {{
+            const item = filteredData[currentIndex];
+            if (!item) return;
+
+            updateMeasureInfo('&#8987; Searching for scale in PDF...');
+
+            const collection = item.collection || '';
+            const pageRef = item.page_ref || '';
+
+            fetch('/api/extract-scale?collection=' + encodeURIComponent(collection) + '&page=' + encodeURIComponent(pageRef))
+                .then(r => r.json())
+                .then(result => {{
+                    if (result.error) {{
+                        updateMeasureInfo('&#9888; ' + result.error);
+                        return;
+                    }}
+
+                    if (result.scales && result.scales.length > 0) {{
+                        // Found scales! Display them
+                        const scaleList = result.scales.map(s => s.scale + ' (p.' + s.page + ')').join(', ');
+                        updateMeasureInfo('&#10004; Found scales: ' + scaleList + '. Click to apply the first one.');
+
+                        // Auto-apply the first scale found
+                        const firstScale = result.scales[0].scale;
+
+                        // Ask user to confirm
+                        if (confirm('Found scale: ' + firstScale + '\\n\\nApply this scale to the current item?')) {{
+                            // Save scale to item
+                            fetch('/api/v1/items/' + item.id, {{
+                                method: 'PUT',
+                                headers: {{ 'Content-Type': 'application/json' }},
+                                body: JSON.stringify({{ scala_metrica: firstScale }})
+                            }})
+                            .then(r => r.json())
+                            .then(res => {{
+                                if (res.success) {{
+                                    item.scala_metrica = firstScale;
+                                    updateMeasureInfo('&#10004; Scale ' + firstScale + ' saved! Use Calibrate for precise pixel calibration.');
+                                    selectItem(currentIndex);  // Refresh display
+                                }}
+                            }});
+                        }}
+                    }} else {{
+                        updateMeasureInfo('&#9888; No scale found in PDF. Use manual Calibrate instead.');
+                    }}
+                }})
+                .catch(err => {{
+                    updateMeasureInfo('&#9888; Error: ' + err);
+                }});
+        }}
+
     </script>
 </body>
 </html>
@@ -3724,6 +4471,7 @@ def main():
 
     # Initialize database
     init_db()
+    run_auto_migrations()  # Auto-add new columns if missing
     migrate_csv_to_db()
 
     # Load config
