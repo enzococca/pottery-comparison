@@ -1,0 +1,34 @@
+{
+  "source_pdf": "2021-11_Pellegrino_cér.pdf",
+  "chapter_to_period": {
+    "Ch1": "",
+    "Ch2": "Contesto storico-cronologico",
+    "Ch3": "",
+    "Ch4": "Masafi-5 (Bronze Récent / Fer I)",
+    "Ch5": "Masafi-5 - Céramique (1600-600 av. J.-C.)",
+    "Ch6": "Masafi-5 - Synthèse (1600-600 av. J.-C.)",
+    "Ch7": "Tell Abraq (Umm an-Nar / Wadi Suq)",
+    "Ch8": "",
+    "Ch9": "Khor Fakkan (Wadi Suq)",
+    "Ch10": "Dibba/Qidfa (Wadi Suq, 2000-1600 av. J.-C.)",
+    "Ch11": "Husn Salut (Bronze Récent / Fer I)",
+    "Ch12": "",
+    "Ch13": "",
+    "Ch14": "",
+    "Ch15": ""
+  },
+  "sites": {
+    "Masafi-5": "Bronze Récent / Fer I (1600-600 av. J.-C.)",
+    "Tell Abraq": "Umm an-Nar / Wadi Suq (2500-1600 av. J.-C.)",
+    "Dibba/Qidfa": "Wadi Suq (2000-1600 av. J.-C.)",
+    "Husn Salut": "Bronze Récent / Fer I (1300-600 av. J.-C.)",
+    "Khor Fakkan": "Wadi Suq (2000-1600 av. J.-C.)"
+  },
+  "chronology": {
+    "Umm an-Nar": "2500-2000 av. J.-C.",
+    "Wadi Suq": "2000-1600 av. J.-C.",
+    "Bronze Récent": "1600-1250 av. J.-C.",
+    "Fer I": "1250-600 av. J.-C.",
+    "Fer II": "600-300 av. J.-C."
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
+  "table_to_period": {
+    "TAV XXII": {
+      "period": "Umm an-Nar / Hili IIf (2250-2100 a.C.)",
+      "page_ref": "pp. 74, 76 (Cap. 4.8.1)"
+    },
+    "TAV XXIII": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXIV": {
+      "period": "Umm an-Nar / Hili IIf (2250-2100 a.C.)",
+      "page_ref": "p. 76 (confronto Hili IIf)"
+    },
+    "TAV XXV": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXVI": {
+      "period": "Umm an-Nar / Hili IId-IIe (2300-2150 a.C.)",
+      "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)"
+    },
+    "TAV XXVII": {
+      "period": "Umm an-Nar / Prima fase fossato",
+      "page_ref": "p. 76 (prima fase)"
+    },
+    "TAV XXVIII": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXIX": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXX": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXXI": {
+      "period": "Umm an-Nar / Hili IId-e (2300-2150 a.C.)",
+      "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)"
+    },
+    "TAV XXXII": {
+      "period": "Umm an-Nar / Prima fase fossato",
+      "page_ref": "p. 68 (Cap. 4.8)"
+    },
+    "TAV XXXIII": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 75 (Fig. 79, SU 87)"
+    },
+    "TAV XXXIV": {
+      "period": "Umm an-Nar / Prima Eta del Bronzo",
+      "page_ref": "p. 83 (Cap. 4.9)"
+    },
+    "TAV XLVIII": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "pp. 117, 120 (Cap. 5.5)"
+    },
+    "TAV XLIX": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "p. 120 (Cap. 5.5)"
+    },
+    "TAVL": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "p. 120 (Cap. 5.5)"
+    },
+    "TAV L": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "p. 120 (Cap. 5.5)"
+    },
+    "TAV LII": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "p. 104 (Grave 2-3)"
+    },
+    "TAV LIII": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "pp. 104, 119 (Grave 3)"
+    },
+    "TAV LIV": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "p. 119 (decorazione Wadi Suq)"
+    },
+    "TAV LVI": {
+      "period": "Wadi Suq (2000-1600 a.C.)",
+      "page_ref": "pp. 119-120 (Cap. 5.5)"
+    },
+    "TAV LXI": {
+      "period": "Wadi Suq / JSS 1a",
+      "page_ref": "p. 121 (JSS 1a)"
+    },
+    "TAV LXII": {
+      "period": "Wadi Suq / JSS 1b (2000-1600 a.C.)",
+      "page_ref": "p. 121 (JSS 1b)"
+    },
+    "TAV LXIII": {
+      "period": "Wadi Suq / JSS 2",
+      "page_ref": "p. 121 (JSS 2)"
+    },
+    "TAV LXIV": {
+      "period": "Wadi Suq / JSS 2",
+      "page_ref": "p. 121 (JSS 2)"
+    },
+    "TAV LXV": {
+      "period": "Wadi Suq / JSS 3",
+      "page_ref": "p. 121 (JSS 3)"
+    },
+    "TAV LXVI": {
+      "period": "Wadi Suq / JSS 3",
+      "page_ref": "p. 121 (JSS 3)"
+    },
+    "TAV LXVII": {
+      "period": "Eta del Bronzo / Survey Site 1",
+      "page_ref": "p. 129 (Cap. 6.1, SS1)"
+    },
+    "TAV LXVIII": {
+      "period": "Eta del Bronzo / Survey Site 2",
+      "page_ref": "p. 129 (Cap. 6.1, SS2)"
+    },
+    "TAV LXIX": {
+      "period": "Eta del Bronzo / Survey Site 3",
+      "page_ref": "p. 129 (Cap. 6.1, SS3)"
+    },
+    "TAV LXX": {
+      "period": "Eta del Bronzo / Survey Site 3",
+      "page_ref": "p. 129 (Cap. 6.1, SS3)"
+    },
+    "TAV LXXI": {
+      "period": "Eta del Bronzo / Survey Site 3",
+      "page_ref": "p. 129 (Cap. 6.1, SS3)"
+    },
+    "TAV LXXII": {
+      "period": "Eta del Bronzo / Survey Site 4",
+      "page_ref": "p. 129 (Cap. 6.1, SS4)"
+    },
+    "TAV LXXIII": {
+      "period": "Eta del Bronzo / Survey Site 5",
+      "page_ref": "p. 129 (Cap. 6.1, SS5)"
+    },
+    "TAV LXXIV": {
+      "period": "Eta del Bronzo / Survey Site 6",
+      "page_ref": "p. 129 (Cap. 6.1, SS6)"
+    },
+    "TAV LXXV": {
+      "period": "Eta del Bronzo / Survey Site 6",
+      "page_ref": "p. 129 (Cap. 6.1, SS6)"
+    },
+    "TAV LXXVI": {
+      "period": "Eta del Bronzo / Survey Site 6",
+      "page_ref": "p. 129 (Cap. 6.1, SS6)"
+    },
+    "TAV LXXVII": {
+      "period": "Eta del Bronzo / Survey Site 7",
+      "page_ref": "pp. 129, 134 (Cap. 6.1, SS7)"
+    },
+    "TAV LXXVIII": {
+      "period": "Eta del Bronzo / Survey Site 7",
+      "page_ref": "p. 129 (Cap. 6.1, SS7)"
+    },
+    "TAV LXXIX": {
+      "period": "Eta del Bronzo / Survey Site 8",
+      "page_ref": "p. 129 (Cap. 6.1, SS8)"
+    },
+    "TAV LXXX": {
+      "period": "Eta del Bronzo / Survey Site 9",
+      "page_ref": "p. 129 (Cap. 6.1, SS9)"
+    },
+    "TAV LXXXI": {
+      "period": "Eta del Bronzo / Survey Site 9",
+      "page_ref": "p. 129 (Cap. 6.1, SS9)"
+    },
+    "TAV LXXXII": {
+      "period": "Eta del Bronzo / Survey Site 9",
+      "page_ref": "p. 129 (Cap. 6.1, SS9)"
+    }
+  },
+  "chronology": {
+    "Hili IIc2": "ca. 2400-2300 a.C. (p. 74)",
+    "Hili IId": "ca. 2300-2200 a.C. (p. 74)",
+    "Hili IIe": "ca. 2200-2150 a.C. (p. 74)",
+    "Hili IIf": "ca. 2150-2100 a.C. (p. 74)",
+    "Prima Eta del Bronzo": "seconda meta III millennio a.C. (pp. 68-77)",
+    "Umm an-Nar": "2500-2000 a.C. (p. 73)",
+    "Wadi Suq": "2000-1600 a.C. (pp. 117-128)"
+  },
+  "chapters": {
+    "Cap. 4.8": "La Ceramica: Osservazioni Preliminari (pp. 68-77)",
+    "Cap. 4.8.1": "Ceramica di tradizione Umm an-Nar (pp. 70-77)",
+    "Cap. 4.8.2": "Ceramica di influenza indiana (pp. 77-81)",
+    "Cap. 4.8.3": "Ceramica del Sudest iranico (p. 81)",
+    "Cap. 5.5": "Jebel Salut 2 - Ceramica (pp. 117-128)",
+    "Cap. 6.1": "Survey Sites (pp. 129-134)"
+  }
+}

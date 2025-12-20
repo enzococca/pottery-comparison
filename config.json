@@ -1,0 +1,25 @@
+{
+  "collections": {
+    "Degli_Espositi": {
+      "name": "Degli Espositi - Tesi MDE (ST1)",
+      "pdf": "PDFs/2- Capp.4-5-6+bibliografia.pdf",
+      "color": "#4472C4",
+      "description": "Ceramica da Sequenza T7 - ST1, Umm an-Nar e Wadi Suq"
+    },
+    "Righetti": {
+      "name": "Righetti - Hili 8 / Wadi Suq",
+      "pdf": "PDFs/Righetti_Thèse_Volume_II.pdf",
+      "color": "#ED7D31",
+      "description": "Ceramica da Hili 8, periodo Umm an-Nar (III millennio)"
+    },
+    "Pellegrino": {
+      "name": "Pellegrino - Masafi / Dibba / Tell Abraq",
+      "pdf": "PDFs/2021-11_Pellegrino_cér.pdf",
+      "color": "#70AD47",
+      "description": "Ceramica da Masafi-5, Dibba, Tell Abraq - Bronze Récent / Fer I"
+    }
+  },
+  "metadata_file": "ceramica_metadata.csv",
+  "version": "1.1",
+  "last_updated": "2025-12-19"
+}

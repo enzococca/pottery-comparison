@@ -1,0 +1,136 @@
+{
+  "source_pdf": "Righetti_Thèse_Volume_II.pdf",
+  "figure_to_period": {
+    "Fig.70": {
+      "period": "Umm an-Nar (2700-2000 av. J.-C.)",
+      "page_ref": "p. 32 (Reconstitution couverture tombe)",
+      "description": "Reconstitution de la couverture - tombes Umm an-Nar"
+    },
+    "Fig.87": {
+      "period": "Bronze moyen-récent (typologie tombes)",
+      "page_ref": "p. 36 (Localisation tombes type CP)",
+      "description": "Localisation des tombes de type CP"
+    },
+    "Fig.111": {
+      "period": "Wadi Suq I (2000-1800 av. J.-C.)",
+      "page_ref": "p. 42 (Assemblage céramique)",
+      "description": "Assemblage céramique Wadi Suq I - Formes ouvertes"
+    },
+    "Fig.112": {
+      "period": "Wadi Suq I (2000-1800 av. J.-C.)",
+      "page_ref": "p. 43 (Assemblage céramique)",
+      "description": "Assemblage céramique Wadi Suq I - Formes fermées"
+    },
+    "Fig.113": {
+      "period": "Wadi Suq II (1800-1600 av. J.-C.)",
+      "page_ref": "p. 44 (Assemblage céramique)",
+      "description": "Assemblage céramique Wadi Suq II - Formes caractéristiques"
+    },
+    "Fig.114": {
+      "period": "Bronze récent (1600-1250 av. J.-C.)",
+      "page_ref": "p. 45 (Assemblage céramique)",
+      "description": "Assemblage céramique Bronze récent - Principales formes"
+    },
+    "Fig.115": {
+      "period": "Bronze moyen-récent",
+      "page_ref": "p. 46 (Vaisselle pierre tendre)",
+      "description": "Vaisselle en pierre tendre - bols, vases, pots, couvercles"
+    },
+    "Fig.117": {
+      "period": "Bronze moyen-récent",
+      "page_ref": "p. 48 (Miscellanées)",
+      "description": "Éléments de parure et vaisselles en alliage cuivreux"
+    },
+    "Fig.157": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 101 (Gobelets Hili 8)",
+      "description": "Gobelets, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.158": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 102 (Gobelets Hili 8)",
+      "description": "Gobelets, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.159": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 103 (Gobelets et fonds)",
+      "description": "Gobelets et fonds, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.160": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 104 (Gobelets et vases)",
+      "description": "Gobelets et vases tronconiques, Hili 8"
+    },
+    "Fig.161": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 105 (Bols Hili 8)",
+      "description": "Bols, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.162": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 106 (Bols et plats)",
+      "description": "Bols et plats, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.163": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 107 (Plats Hili 8)",
+      "description": "Plats, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.164": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 108 (Plats Hili 8)",
+      "description": "Plats, Hili 8 (dessins P. Gouin)"
+    },
+    "Fig.165": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 109 (Plats et jarres)",
+      "description": "Plats et jarres de taille moyenne, Hili 8"
+    },
+    "Fig.166": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 110 (Grandes jarres)",
+      "description": "Grandes et moyennes jarres, Hili 8"
+    },
+    "Fig.167": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 111 (Jarres moyennes)",
+      "description": "Jarres de taille moyenne, Hili 8"
+    },
+    "Fig.168": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 112 (Jarre moyenne)",
+      "description": "Jarre de taille moyenne, Hili 8"
+    },
+    "Fig.169": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 113 (Pots globulaires)",
+      "description": "Pots globulaires, Hili 8"
+    },
+    "Fig.170": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 114 (Pots et jarres miniatures)",
+      "description": "Pots globulaires et jarres miniatures, Hili 8"
+    },
+    "Fig.171": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 115 (Jarres à bec)",
+      "description": "Jarres à bec, Hili 8"
+    },
+    "Fig.172": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 116 (Jattes et jarres)",
+      "description": "Jattes et jarres à carène, Hili 8"
+    },
+    "Fig.173": {
+      "period": "Umm an-Nar / Hili 8 période III (2700-2000 av. J.-C.)",
+      "page_ref": "p. 117 (Fragments peints)",
+      "description": "Fragments peints, Hili 8"
+    }
+  },
+  "chronology": {
+    "Umm an-Nar": "2700-2000 av. J.-C. (IIIe millénaire)",
+    "Wadi Suq I": "2000-1800 av. J.-C.",
+    "Wadi Suq II": "1800-1600 av. J.-C.",
+    "Bronze récent": "1600-1250 av. J.-C."
+  }
+}
