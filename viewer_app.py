@@ -1361,6 +1361,42 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        # 3D Reconstruction endpoint
+        if parsed.path == '/api/3d/reconstruct':
+            image_path = post_data.get('image_path', '')
+            if not image_path:
+                self.send_json({'error': 'No image path provided'}, 400)
+                return
+
+            base_path = Path(__file__).parent
+            full_path = str(base_path / image_path)
+
+            if not os.path.exists(full_path):
+                self.send_json({'error': 'Image not found'}, 404)
+                return
+
+            try:
+                from vessel_3d_reconstruction import reconstruct_vessel
+                result = reconstruct_vessel(full_path, debug=False)
+
+                if result and result.get('glb_path'):
+                    # Read GLB file and encode as base64
+                    with open(result['glb_path'], 'rb') as f:
+                        glb_data = base64.b64encode(f.read()).decode('utf-8')
+
+                    self.send_json({
+                        'success': True,
+                        'glb_data': glb_data,
+                        'vertices': len(result['mesh']['vertices']),
+                        'faces': len(result['mesh']['faces']),
+                        'profile_points': result['mesh']['profile_points']
+                    })
+                else:
+                    self.send_json({'error': 'Failed to extract profile from image'}, 400)
+            except Exception as e:
+                self.send_json({'error': f'3D reconstruction failed: {str(e)}'}, 500)
+            return
+
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
@@ -2608,9 +2644,100 @@ def get_viewer_html(role):
         }}
         .pdf-nav-btn:hover {{ background: rgba(79, 195, 247, 0.4); }}
         .pdf-nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
+
+        /* 3D Viewer Modal */
+        .viewer3d-modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 3000;
+            flex-direction: column;
+        }}
+        .viewer3d-modal.active {{ display: flex; }}
+        .viewer3d-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #1a1a2e;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }}
+        .viewer3d-title {{
+            color: #4fc3f7;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .viewer3d-info {{
+            color: #888;
+            font-size: 0.85em;
+        }}
+        .viewer3d-controls {{
+            display: flex;
+            gap: 10px;
+        }}
+        .viewer3d-btn {{
+            background: rgba(79, 195, 247, 0.2);
+            border: none;
+            color: #4fc3f7;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }}
+        .viewer3d-btn:hover {{ background: rgba(79, 195, 247, 0.4); }}
+        .viewer3d-btn.close {{ background: rgba(255, 100, 100, 0.2); color: #ff6b6b; }}
+        .viewer3d-btn.close:hover {{ background: rgba(255, 100, 100, 0.4); }}
+        .viewer3d-container {{
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }}
+        #viewer3dCanvas {{
+            width: 100%;
+            height: 100%;
+        }}
+        .viewer3d-loading {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #4fc3f7;
+        }}
+        .viewer3d-loading .spinner {{
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(79, 195, 247, 0.2);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }}
+        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+        .viewer3d-help {{
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: #888;
+            font-size: 0.85em;
+        }}
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
     <div class="header">
@@ -2692,6 +2819,9 @@ def get_viewer_html(role):
                     <button class="measure-btn" id="clearMeasureBtn" onclick="clearMeasurements()" title="Clear measurements">
                         &#10006; Clear
                     </button>
+                    <button class="measure-btn" id="view3dBtn" onclick="open3DViewer()" title="View 3D reconstruction">
+                        &#127912; 3D
+                    </button>
                 </div>
                 <canvas class="measure-canvas" id="measureCanvas"></canvas>
                 <div class="measure-info" id="measureInfo" style="display:none;"></div>
@@ -2720,6 +2850,28 @@ def get_viewer_html(role):
                     <button class="modal-btn primary" onclick="applyCalibration()">Apply</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 3D Viewer Modal -->
+    <div class="viewer3d-modal" id="viewer3dModal">
+        <div class="viewer3d-header">
+            <div class="viewer3d-title">
+                <span>&#127912; 3D Vessel Reconstruction</span>
+                <span class="viewer3d-info" id="viewer3dInfo"></span>
+            </div>
+            <div class="viewer3d-controls">
+                <button class="viewer3d-btn" onclick="reset3DView()">&#8635; Reset View</button>
+                <button class="viewer3d-btn" onclick="download3D()">&#8595; Download GLB</button>
+                <button class="viewer3d-btn close" onclick="close3DViewer()">&#10005; Close</button>
+            </div>
+        </div>
+        <div class="viewer3d-container" id="viewer3dContainer">
+            <div class="viewer3d-loading" id="viewer3dLoading">
+                <div class="spinner"></div>
+                <p>Generating 3D model...</p>
+            </div>
+            <div class="viewer3d-help">&#128270; Drag to rotate | Scroll to zoom | Right-click to pan</div>
         </div>
     </div>
 
@@ -4465,6 +4617,207 @@ def get_viewer_html(role):
                     updateMeasureInfo('&#9888; Error: ' + err);
                 }});
         }}
+
+        // ===== 3D VIEWER =====
+
+        let viewer3dScene, viewer3dCamera, viewer3dRenderer, viewer3dControls;
+        let viewer3dModel = null;
+        let viewer3dGlbData = null;
+
+        function open3DViewer() {{
+            if (!currentItem) {{
+                alert('No item selected');
+                return;
+            }}
+
+            const modal = document.getElementById('viewer3dModal');
+            const loading = document.getElementById('viewer3dLoading');
+            const info = document.getElementById('viewer3dInfo');
+
+            modal.classList.add('active');
+            loading.style.display = 'block';
+            info.textContent = 'Processing ' + currentItem.id + '...';
+
+            // Request 3D reconstruction
+            fetch('/api/3d/reconstruct', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ image_path: currentItem.image_path }})
+            }})
+            .then(r => r.json())
+            .then(data => {{
+                if (data.error) {{
+                    loading.innerHTML = '<p style="color:#ff6b6b;">&#9888; ' + data.error + '</p>';
+                    return;
+                }}
+
+                viewer3dGlbData = data.glb_data;
+                info.textContent = data.vertices.toLocaleString() + ' vertices, ' + data.faces.toLocaleString() + ' faces';
+                loading.style.display = 'none';
+
+                init3DViewer();
+                load3DModel(data.glb_data);
+            }})
+            .catch(err => {{
+                loading.innerHTML = '<p style="color:#ff6b6b;">&#9888; ' + err + '</p>';
+            }});
+        }}
+
+        function init3DViewer() {{
+            const container = document.getElementById('viewer3dContainer');
+
+            // Clean up existing
+            if (viewer3dRenderer) {{
+                container.removeChild(viewer3dRenderer.domElement);
+                viewer3dRenderer.dispose();
+            }}
+
+            // Scene
+            viewer3dScene = new THREE.Scene();
+            viewer3dScene.background = new THREE.Color(0x1a1a2e);
+
+            // Camera
+            const aspect = container.clientWidth / container.clientHeight;
+            viewer3dCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+            viewer3dCamera.position.set(50, 30, 50);
+
+            // Renderer
+            viewer3dRenderer = new THREE.WebGLRenderer({{ antialias: true }});
+            viewer3dRenderer.setSize(container.clientWidth, container.clientHeight);
+            viewer3dRenderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(viewer3dRenderer.domElement);
+
+            // Controls
+            viewer3dControls = new THREE.OrbitControls(viewer3dCamera, viewer3dRenderer.domElement);
+            viewer3dControls.enableDamping = true;
+            viewer3dControls.dampingFactor = 0.05;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            viewer3dScene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 50, 50);
+            viewer3dScene.add(directionalLight);
+
+            const backLight = new THREE.DirectionalLight(0x4fc3f7, 0.3);
+            backLight.position.set(-50, 20, -50);
+            viewer3dScene.add(backLight);
+
+            // Grid
+            const gridHelper = new THREE.GridHelper(100, 20, 0x4fc3f7, 0x333333);
+            viewer3dScene.add(gridHelper);
+
+            // Animate
+            function animate() {{
+                if (!document.getElementById('viewer3dModal').classList.contains('active')) return;
+                requestAnimationFrame(animate);
+                viewer3dControls.update();
+                viewer3dRenderer.render(viewer3dScene, viewer3dCamera);
+            }}
+            animate();
+
+            // Handle resize
+            window.addEventListener('resize', () => {{
+                if (!viewer3dRenderer) return;
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                viewer3dCamera.aspect = w / h;
+                viewer3dCamera.updateProjectionMatrix();
+                viewer3dRenderer.setSize(w, h);
+            }});
+        }}
+
+        function load3DModel(glbBase64) {{
+            const loader = new THREE.GLTFLoader();
+
+            // Convert base64 to ArrayBuffer
+            const binary = atob(glbBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {{
+                bytes[i] = binary.charCodeAt(i);
+            }}
+
+            loader.parse(bytes.buffer, '', function(gltf) {{
+                // Remove old model
+                if (viewer3dModel) {{
+                    viewer3dScene.remove(viewer3dModel);
+                }}
+
+                viewer3dModel = gltf.scene;
+
+                // Apply material
+                viewer3dModel.traverse(function(child) {{
+                    if (child.isMesh) {{
+                        child.material = new THREE.MeshStandardMaterial({{
+                            color: 0xc9a06c,  // Ceramic color
+                            roughness: 0.7,
+                            metalness: 0.1,
+                            side: THREE.DoubleSide
+                        }});
+                    }}
+                }});
+
+                // Center and scale
+                const box = new THREE.Box3().setFromObject(viewer3dModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 30 / maxDim;
+
+                viewer3dModel.scale.setScalar(scale);
+                viewer3dModel.position.sub(center.multiplyScalar(scale));
+
+                viewer3dScene.add(viewer3dModel);
+
+                // Position camera
+                viewer3dCamera.position.set(50, 30, 50);
+                viewer3dControls.target.set(0, 0, 0);
+                viewer3dControls.update();
+            }},
+            function(error) {{
+                console.error('3D loading error:', error);
+            }});
+        }}
+
+        function reset3DView() {{
+            if (viewer3dCamera && viewer3dControls) {{
+                viewer3dCamera.position.set(50, 30, 50);
+                viewer3dControls.target.set(0, 0, 0);
+                viewer3dControls.update();
+            }}
+        }}
+
+        function download3D() {{
+            if (!viewer3dGlbData) return;
+
+            const binary = atob(viewer3dGlbData);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {{
+                bytes[i] = binary.charCodeAt(i);
+            }}
+
+            const blob = new Blob([bytes], {{ type: 'model/gltf-binary' }});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (currentItem ? currentItem.id : 'vessel') + '.glb';
+            a.click();
+            URL.revokeObjectURL(url);
+        }}
+
+        function close3DViewer() {{
+            document.getElementById('viewer3dModal').classList.remove('active');
+            document.getElementById('viewer3dLoading').style.display = 'block';
+            viewer3dGlbData = null;
+        }}
+
+        // Close 3D viewer on Escape
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape' && document.getElementById('viewer3dModal').classList.contains('active')) {{
+                close3DViewer();
+            }}
+        }});
 
     </script>
 </body>
