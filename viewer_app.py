@@ -29,8 +29,9 @@ PORT = int(os.environ.get('PORT', 8080))
 HOST = os.environ.get('HOST', '0.0.0.0')
 IS_RAILWAY = os.environ.get('RAILWAY_ENVIRONMENT') is not None
 
-# Database
-DB_FILE = "ceramica.db"
+# Database - Use DATA_DIR for persistent storage on Railway
+DATA_DIR = os.environ.get('DATA_DIR', '')  # Set to /data on Railway with volume
+DB_FILE = os.path.join(DATA_DIR, "ceramica.db") if DATA_DIR else "ceramica.db"
 CSV_FILE = "ceramica_metadata.csv"
 CONFIG_FILE = "config.json"
 
@@ -68,7 +69,10 @@ DEFAULT_CONFIG = {
 
 def get_db():
     """Get database connection"""
-    db_path = Path(__file__).parent / DB_FILE
+    if DATA_DIR:
+        db_path = DB_FILE  # Already absolute path
+    else:
+        db_path = Path(__file__).parent / DB_FILE
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
@@ -76,6 +80,11 @@ def get_db():
 
 def init_db():
     """Initialize SQLite database"""
+    # Create data directory if using persistent storage
+    if DATA_DIR and not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        print(f"Created data directory: {DATA_DIR}")
+
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1882,18 +1891,19 @@ def get_viewer_html(role):
             const page = pageRef || item?.page_ref || '1';
             const coll = collection || item?.collection || '';
 
-            // Use browser-based PDF viewing (cross-platform)
-            fetch(`/api/pdf-url?page=${{encodeURIComponent(page)}}&collection=${{encodeURIComponent(coll)}}`)
-                .then(r => r.json())
-                .then(result => {{
-                    if (result.success && result.url) {{
-                        // Open PDF in new tab with page navigation
-                        window.open(result.url, '_blank');
-                    }} else if (result.error) {{
-                        alert('PDF Error: ' + result.error);
-                    }}
-                }})
-                .catch(err => console.error('PDF error:', err));
+            // Extract page number from reference
+            const pageMatch = page.match(/p+\\.?\\s*(\\d+)/i);
+            const pageNum = pageMatch ? pageMatch[1] : '1';
+
+            // Get PDF path from config
+            const pdfPath = config.collections?.[coll]?.pdf;
+            if (pdfPath) {{
+                // Open PDF directly with page fragment (no popup blocker issue)
+                const pdfUrl = '/' + pdfPath + '#page=' + pageNum;
+                window.open(pdfUrl, '_blank');
+            }} else {{
+                alert('PDF not configured for this collection');
+            }}
         }}
 
         function openEditModal() {{
@@ -2079,11 +2089,16 @@ def main():
     # Load config
     config = load_config()
 
+    db_location = DB_FILE if DATA_DIR else str(Path(__file__).parent / DB_FILE)
+    persistence = "PERSISTENT (Railway Volume)" if DATA_DIR else "Local"
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
 ║             CeramicaDatabase - Unified Viewer v2.0                   ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  Server: http://{HOST}:{PORT}                                            ║
+║  Database: {persistence}                                             ║
+║  DB Path: {db_location[:50]}                                         ║
 ║                                                                      ║
 ║  Credentials:                                                        ║
 ║    Admin:  admin2024   (full access)                                 ║
