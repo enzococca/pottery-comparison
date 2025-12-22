@@ -4961,9 +4961,9 @@ def get_viewer_html(role):
                         toggleAIBtn.style.display = 'inline-block';
                     }}
 
-                    // Switch to AI view
+                    // Switch to AI view with painting animation
                     viewer3dShowAI = true;
-                    load3DModel(viewer3dGlbAIData);
+                    startPaintingAnimation(viewer3dGlbAIData);
 
                     info.textContent += ' | AI: ' + (data.ai_analysis?.decoration_type || 'analyzed');
                 }} else if (data.ai_analysis) {{
@@ -4978,6 +4978,125 @@ def get_viewer_html(role):
                 loading.style.display = 'none';
                 alert('AI Analysis error: ' + err);
             }});
+        }}
+
+        // === PAINTING ANIMATION FOR RECONSTRUCTION ===
+        let paintingAnimationId = null;
+
+        function startPaintingAnimation(glbBase64) {{
+            // Create painting overlay
+            const container = document.getElementById('viewer3dContainer');
+
+            // Create or get the painting overlay
+            let overlay = document.getElementById('paintingOverlay');
+            if (!overlay) {{
+                overlay = document.createElement('div');
+                overlay.id = 'paintingOverlay';
+                overlay.innerHTML = `
+                    <div class="painting-content">
+                        <div class="brush-container">
+                            <svg class="brush-icon" viewBox="0 0 64 64" width="48" height="48">
+                                <path fill="#8B4513" d="M10,54 L16,48 L48,16 L54,22 L22,54 Z"/>
+                                <path fill="#D2691E" d="M48,16 L54,10 L58,14 L54,22 Z"/>
+                                <path fill="#FFD700" d="M54,10 L58,6 L62,10 L58,14 Z"/>
+                                <circle fill="#333" cx="14" cy="52" r="3"/>
+                            </svg>
+                        </div>
+                        <div class="painting-progress">
+                            <div class="progress-bar"></div>
+                        </div>
+                        <div class="painting-text">Ricostruendo decorazione...</div>
+                    </div>
+                `;
+                overlay.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.7);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 100;
+                    pointer-events: none;
+                `;
+                container.style.position = 'relative';
+                container.appendChild(overlay);
+
+                // Add CSS for animation
+                const style = document.createElement('style');
+                style.textContent = `
+                    .painting-content {{
+                        text-align: center;
+                        color: white;
+                    }}
+                    .brush-container {{
+                        animation: brush-move 2s ease-in-out infinite;
+                    }}
+                    @keyframes brush-move {{
+                        0%, 100% {{ transform: translate(-30px, 0) rotate(-30deg); }}
+                        25% {{ transform: translate(30px, -20px) rotate(-20deg); }}
+                        50% {{ transform: translate(30px, 20px) rotate(-40deg); }}
+                        75% {{ transform: translate(-30px, 10px) rotate(-35deg); }}
+                    }}
+                    .painting-progress {{
+                        width: 200px;
+                        height: 8px;
+                        background: rgba(255,255,255,0.2);
+                        border-radius: 4px;
+                        margin: 20px auto;
+                        overflow: hidden;
+                    }}
+                    .progress-bar {{
+                        width: 0%;
+                        height: 100%;
+                        background: linear-gradient(90deg, #ffd700, #ff8c00);
+                        border-radius: 4px;
+                        transition: width 0.1s;
+                    }}
+                    .painting-text {{
+                        font-size: 14px;
+                        margin-top: 10px;
+                    }}
+                `;
+                document.head.appendChild(style);
+            }}
+
+            overlay.style.display = 'flex';
+            const progressBar = overlay.querySelector('.progress-bar');
+            const paintingText = overlay.querySelector('.painting-text');
+
+            // Animate progress
+            let progress = 0;
+            const messages = [
+                'Ricostruendo decorazione...',
+                'Applicando pattern...',
+                'Specchiando motivi...',
+                'Completando dettagli...',
+                'Decorazione completata!'
+            ];
+
+            const animationInterval = setInterval(() => {{
+                progress += 2;
+                progressBar.style.width = progress + '%';
+
+                // Update message
+                const msgIndex = Math.min(Math.floor(progress / 25), messages.length - 1);
+                paintingText.textContent = messages[msgIndex];
+
+                if (progress >= 100) {{
+                    clearInterval(animationInterval);
+
+                    // Short delay then show the model
+                    setTimeout(() => {{
+                        overlay.style.display = 'none';
+                        load3DModel(glbBase64);
+                    }}, 500);
+                }}
+            }}, 50);  // 50ms * 50 steps = ~2.5 seconds total
+
+            paintingAnimationId = animationInterval;
         }}
 
         function displayAIAnalysis(analysis) {{

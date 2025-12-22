@@ -1189,87 +1189,125 @@ Rispondi SOLO con JSON valido, senza altri commenti.'''
 def generate_texture_from_ai_analysis(analysis, decoration_region, profile_data, size=(1024, 512)):
     """
     Generate a texture based on AI analysis.
-    Uses the ACTUAL original decoration and tiles/mirrors it for reconstruction.
-    The reconstruction should look realistic, not schematic.
+    - Filters out vessel profile lines (keeps only decoration)
+    - Original decoration: solid fill
+    - Reconstructed decoration: hatched/patterned fill (clearly different)
     """
     tex_w, tex_h = size
     dec_h, dec_w = decoration_region.shape[:2]
 
-    print(f"  Generating realistic texture from original decoration...", flush=True)
+    print(f"  Generating texture with decoration only (no profile lines)...", flush=True)
 
     # Start with ceramic base color
     texture = np.ones((tex_h, tex_w, 3), dtype=np.uint8)
-    texture[:, :] = [245, 240, 230]  # Warm ceramic color (BGR)
+    ceramic_color = [245, 240, 230]  # Warm ceramic color (BGR)
+    texture[:, :] = ceramic_color
 
-    # Scale decoration to fit texture height while maintaining aspect ratio
+    # Scale decoration to fit texture height
     scale = tex_h / dec_h
     dec_scaled_w = int(dec_w * scale)
     dec_scaled_h = tex_h
 
-    # Resize the original decoration (keep full color, high quality)
+    # Resize the original decoration (high quality)
     decoration_scaled = cv2.resize(decoration_region, (dec_scaled_w, dec_scaled_h),
                                     interpolation=cv2.INTER_LANCZOS4)
 
-    # Create mask for decoration (black lines on white background)
+    # === STEP 1: Create mask for ALL dark lines ===
     gray = cv2.cvtColor(decoration_scaled, cv2.COLOR_BGR2GRAY)
-    # Use adaptive threshold for better extraction of fine lines
-    mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                  cv2.THRESH_BINARY_INV, 11, 5)
+    _, all_lines_mask = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
 
-    # Clean up mask - remove noise
+    # === STEP 2: Detect and REMOVE vessel profile lines ===
+    # Profile lines are typically:
+    # - On the edges (left and right borders)
+    # - Long continuous vertical/diagonal lines
+    # - The outermost lines of the image
+
+    # Find contours
+    contours, _ = cv2.findContours(all_lines_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Create mask for profile lines to remove
+    profile_mask = np.zeros_like(all_lines_mask)
+
+    for contour in contours:
+        # Get bounding box
+        x, y, w, h = cv2.boundingRect(contour)
+
+        # Check if this is likely a profile line:
+        # 1. Touches the left or right edge
+        # 2. Is very tall (spans most of the height)
+        # 3. Is relatively thin
+
+        touches_left = x < 10
+        touches_right = (x + w) > (dec_scaled_w - 10)
+        is_tall = h > dec_scaled_h * 0.5
+        is_thin = w < dec_scaled_w * 0.15
+
+        if (touches_left or touches_right) and is_tall and is_thin:
+            # This is likely a profile line - mark for removal
+            cv2.drawContours(profile_mask, [contour], -1, 255, -1)
+
+    # Also remove lines very close to top and bottom edges (vessel rim/base outlines)
+    edge_margin = int(dec_scaled_h * 0.03)
+    profile_mask[:edge_margin, :] = all_lines_mask[:edge_margin, :]
+    profile_mask[-edge_margin:, :] = all_lines_mask[-edge_margin:, :]
+
+    # === STEP 3: Create DECORATION-ONLY mask ===
+    decoration_mask = cv2.bitwise_and(all_lines_mask, cv2.bitwise_not(profile_mask))
+
+    # Clean up - remove small noise, keep decoration patterns
     kernel = np.ones((2, 2), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    decoration_mask = cv2.morphologyEx(decoration_mask, cv2.MORPH_OPEN, kernel)
+    decoration_mask = cv2.morphologyEx(decoration_mask, cv2.MORPH_CLOSE, kernel)
 
-    # Calculate how much of the original we have vs how much to reconstruct
-    # Original takes approximately 1/3 of the circumference (what's visible in the drawing)
+    print(f"  Filtered out {cv2.countNonZero(profile_mask)} profile pixels, kept {cv2.countNonZero(decoration_mask)} decoration pixels", flush=True)
+
+    # === STEP 4: Place ORIGINAL decoration (solid fill) ===
     original_width = min(dec_scaled_w, tex_w // 3)
+    decoration_color = (30, 25, 20)  # Dark brown/black
 
-    # === PLACE ORIGINAL DECORATION ===
     for y in range(tex_h):
         for x in range(min(original_width, dec_scaled_w)):
-            if mask[y, x] > 100:
-                # Use actual decoration color
-                texture[y, x] = decoration_scaled[y, x]
+            if decoration_mask[y, x] > 100:
+                texture[y, x] = decoration_color
 
-    # === RECONSTRUCT THE REST BY TILING/MIRRORING ===
-    # Create mirrored version for seamless tiling
+    # === STEP 5: RECONSTRUCT with HATCHED pattern (clearly different) ===
     decoration_mirrored = cv2.flip(decoration_scaled, 1)
-    mask_mirrored = cv2.flip(mask, 1)
+    mask_mirrored = cv2.flip(decoration_mask, 1)
 
-    # Reconstruction starts after original
-    recon_start = original_width
+    # Reconstruction color (slightly lighter than original)
+    recon_color = (70, 60, 50)  # Lighter brown
 
-    # Tile the decoration across the remaining texture
     tile_x = 0
-    for x in range(recon_start, tex_w):
+    for x in range(original_width, tex_w):
         src_x = tile_x % dec_scaled_w
-        # Alternate between mirrored and original for seamless tiling
-        use_mirror = (tile_x // dec_scaled_w) % 2 == 0  # Start with mirrored
+        use_mirror = (tile_x // dec_scaled_w) % 2 == 0
 
         for y in range(tex_h):
-            if use_mirror:
-                if mask_mirrored[y, src_x] > 100:
-                    # Slightly lighter to indicate reconstruction
-                    orig_color = decoration_mirrored[y, src_x].astype(np.int32)
-                    new_color = np.clip(orig_color + 40, 0, 255).astype(np.uint8)
-                    texture[y, x] = new_color
-            else:
-                if mask[y, src_x] > 100:
-                    orig_color = decoration_scaled[y, src_x].astype(np.int32)
-                    new_color = np.clip(orig_color + 40, 0, 255).astype(np.uint8)
-                    texture[y, x] = new_color
+            current_mask = mask_mirrored if use_mirror else decoration_mask
+
+            if current_mask[y, src_x] > 100:
+                # Apply HATCHING pattern to show it's reconstructed
+                # Diagonal hatching: draw every 3rd pixel in a diagonal pattern
+                is_hatched = ((x + y) % 4 < 2)  # 50% density diagonal hatching
+
+                if is_hatched:
+                    texture[y, x] = recon_color
+                else:
+                    # Lighter fill between hatches
+                    texture[y, x] = (180, 170, 160)
 
         tile_x += 1
 
-    # Add subtle separator line between original and reconstruction
-    separator_color = (200, 190, 180)
-    cv2.line(texture, (original_width, 0), (original_width, tex_h), separator_color, 1)
+    # === STEP 6: Add visual separator ===
+    # Dotted line separator between original and reconstruction
+    for y in range(0, tex_h, 4):
+        texture[y:y+2, original_width:original_width+2] = (150, 140, 130)
 
-    # Add small labels (minimal, non-intrusive)
-    label_color = (120, 110, 100)
-    cv2.putText(texture, "orig.", (5, tex_h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, label_color, 1)
-    cv2.putText(texture, "ricostr.", (original_width + 5, tex_h - 10),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.3, label_color, 1)
+    # Small labels at bottom
+    label_color = (100, 90, 80)
+    cv2.putText(texture, "ORIGINALE", (5, tex_h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.25, label_color, 1)
+    cv2.putText(texture, "RICOSTRUZIONE", (original_width + 5, tex_h - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.25, label_color, 1)
 
     return texture
 
