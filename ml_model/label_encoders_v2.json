@@ -1,0 +1,30 @@
+{
+  "period_classes": [
+    "",
+    "Late Bronze Age",
+    "Umm an-Nar",
+    "Wadi Suq"
+  ],
+  "decoration_classes": [
+    "",
+    "black-on-grey",
+    "decorated",
+    "incised",
+    "painted",
+    "plain"
+  ],
+  "vessel_classes": [
+    "base",
+    "body sherd",
+    "bowl",
+    "carinated bowl",
+    "ceramic",
+    "dish",
+    "flask",
+    "jar",
+    "miniature vessel",
+    "plate",
+    "pot",
+    "unknown"
+  ]
+}

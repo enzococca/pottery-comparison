@@ -128,12 +128,12 @@ MACRO_PERIODS = {
 
 # ML Model paths
 ML_MODEL_DIR = Path(__file__).parent / "ml_model"
-ML_MODEL_PATH = ML_MODEL_DIR / "ceramic_classifier.pt"
-ML_ENCODERS_PATH = ML_MODEL_DIR / "label_encoders.json"
+ML_MODEL_PATH = ML_MODEL_DIR / "ceramic_classifier_v2.pt"
+ML_ENCODERS_PATH = ML_MODEL_DIR / "label_encoders_v2.json"
 
 
 def load_ml_model():
-    """Load ML model lazily"""
+    """Load ML model v2 lazily - Multi-task with Period, Decoration, Vessel Type"""
     global ML_MODEL, ML_ENCODERS, ML_TRANSFORM
 
     if ML_MODEL is not None:
@@ -145,29 +145,51 @@ def load_ml_model():
         from torchvision import transforms, models
         from PIL import Image
 
-        # Define model architecture
-        class CeramicClassifier(nn.Module):
-            def __init__(self, n_period_classes, n_decoration_classes):
+        # Define model architecture v2 - ResNet50 + 3 heads
+        class CeramicClassifierV2(nn.Module):
+            def __init__(self, n_period, n_decoration, n_vessel, dropout=0.4):
                 super().__init__()
-                self.backbone = models.resnet18(weights=None)
-                n_features = self.backbone.fc.in_features
+                self.backbone = models.resnet50(weights=None)
+                n_features = self.backbone.fc.in_features  # 2048
                 self.backbone.fc = nn.Identity()
-                self.shared = nn.Sequential(nn.Linear(n_features, 256), nn.ReLU(), nn.Dropout(0.3))
-                self.period_head = nn.Linear(256, n_period_classes)
-                self.decoration_head = nn.Linear(256, n_decoration_classes)
+
+                self.shared = nn.Sequential(
+                    nn.Linear(n_features, 512),
+                    nn.BatchNorm1d(512),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(512, 256),
+                    nn.BatchNorm1d(256),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                )
+
+                self.period_head = nn.Sequential(
+                    nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_period)
+                )
+                self.decoration_head = nn.Sequential(
+                    nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_decoration)
+                )
+                self.vessel_head = nn.Sequential(
+                    nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_vessel)
+                )
 
             def forward(self, x):
                 features = self.backbone(x)
                 shared = self.shared(features)
-                return self.period_head(shared), self.decoration_head(shared)
+                return self.period_head(shared), self.decoration_head(shared), self.vessel_head(shared)
 
         # Load encoders
         with open(ML_ENCODERS_PATH) as f:
             ML_ENCODERS = json.load(f)
 
         # Load model
-        checkpoint = torch.load(ML_MODEL_PATH, map_location='cpu')
-        ML_MODEL = CeramicClassifier(checkpoint['n_period_classes'], checkpoint['n_decoration_classes'])
+        checkpoint = torch.load(ML_MODEL_PATH, map_location='cpu', weights_only=True)
+        ML_MODEL = CeramicClassifierV2(
+            checkpoint['n_period'],
+            checkpoint['n_decoration'],
+            checkpoint['n_vessel']
+        )
         ML_MODEL.load_state_dict(checkpoint['model_state_dict'])
         ML_MODEL.eval()
 
@@ -178,16 +200,18 @@ def load_ml_model():
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
 
-        print("ML Model loaded successfully")
+        print("ML Model v2 loaded successfully (Period + Decoration + Vessel Type)")
         return True
 
     except Exception as e:
         print(f"Error loading ML model: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 def classify_image(image_data):
-    """Classify an image using the ML model"""
+    """Classify an image using the ML model v2 - Period, Decoration, Vessel Type"""
     if not load_ml_model():
         return {'error': 'ML model not available'}
 
@@ -206,9 +230,10 @@ def classify_image(image_data):
         img_tensor = ML_TRANSFORM(img).unsqueeze(0)
 
         with torch.no_grad():
-            period_out, decoration_out = ML_MODEL(img_tensor)
+            period_out, decoration_out, vessel_out = ML_MODEL(img_tensor)
             period_probs = torch.softmax(period_out, dim=1)
             decoration_probs = torch.softmax(decoration_out, dim=1)
+            vessel_probs = torch.softmax(vessel_out, dim=1)
 
         # Get all predictions with probabilities
         period_results = []
@@ -227,14 +252,296 @@ def classify_image(image_data):
             })
         decoration_results.sort(key=lambda x: -x['confidence'])
 
+        vessel_results = []
+        for i, prob in enumerate(vessel_probs[0]):
+            vessel_results.append({
+                'class': ML_ENCODERS['vessel_classes'][i],
+                'confidence': float(prob) * 100
+            })
+        vessel_results.sort(key=lambda x: -x['confidence'])
+
         return {
             'success': True,
             'period': period_results,
             'decoration': decoration_results,
+            'vessel_type': vessel_results,
             'predicted_period': period_results[0]['class'],
             'predicted_decoration': decoration_results[0]['class'],
+            'predicted_vessel_type': vessel_results[0]['class'],
             'period_confidence': period_results[0]['confidence'],
-            'decoration_confidence': decoration_results[0]['confidence']
+            'decoration_confidence': decoration_results[0]['confidence'],
+            'vessel_confidence': vessel_results[0]['confidence']
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
+def explain_classification(image_data):
+    """Generate Grad-CAM heatmap and explanations for classification"""
+    if not load_ml_model():
+        return {'error': 'ML model not available'}
+
+    try:
+        import torch
+        import torch.nn.functional as F
+        from PIL import Image
+        import numpy as np
+        import cv2
+
+        # Decode image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+        original_img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        img_array = np.array(original_img)
+
+        # Transform for model
+        img_tensor = ML_TRANSFORM(original_img).unsqueeze(0)
+
+        # Hook to capture gradients and activations
+        gradients = []
+        activations = []
+
+        def backward_hook(module, grad_input, grad_output):
+            gradients.append(grad_output[0])
+
+        def forward_hook(module, input, output):
+            activations.append(output)
+
+        # Register hooks on the last conv layer of ResNet50
+        target_layer = ML_MODEL.backbone.layer4[-1]
+        forward_handle = target_layer.register_forward_hook(forward_hook)
+        backward_handle = target_layer.register_full_backward_hook(backward_hook)
+
+        # Forward pass
+        ML_MODEL.eval()
+        img_tensor.requires_grad_(True)
+        period_out, decoration_out, vessel_out = ML_MODEL(img_tensor)
+
+        # Get predictions
+        period_pred = period_out.argmax(1).item()
+        decoration_pred = decoration_out.argmax(1).item()
+        vessel_pred = vessel_out.argmax(1).item()
+
+        period_probs = torch.softmax(period_out, dim=1)
+        decoration_probs = torch.softmax(decoration_out, dim=1)
+        vessel_probs = torch.softmax(vessel_out, dim=1)
+
+        # Compute Grad-CAM for decoration (most visual task)
+        ML_MODEL.zero_grad()
+        decoration_out[0, decoration_pred].backward(retain_graph=True)
+
+        # Get gradients and activations
+        grads = gradients[0].detach().cpu().numpy()[0]  # [C, H, W]
+        acts = activations[0].detach().cpu().numpy()[0]  # [C, H, W]
+
+        # Global average pooling of gradients
+        weights = np.mean(grads, axis=(1, 2))  # [C]
+
+        # Weighted combination of activation maps
+        cam = np.zeros(acts.shape[1:], dtype=np.float32)
+        for i, w in enumerate(weights):
+            cam += w * acts[i]
+
+        # ReLU and normalize
+        cam = np.maximum(cam, 0)
+        cam = cv2.resize(cam, (img_array.shape[1], img_array.shape[0]))
+        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+
+        # Create heatmap overlay
+        heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+        # Blend with original
+        overlay = (0.4 * heatmap + 0.6 * img_array).astype(np.uint8)
+
+        # Convert to base64
+        overlay_img = Image.fromarray(overlay)
+        buffered = io.BytesIO()
+        overlay_img.save(buffered, format="PNG")
+        heatmap_b64 = base64.b64encode(buffered.getvalue()).decode()
+
+        # Remove hooks
+        forward_handle.remove()
+        backward_handle.remove()
+
+        # Get class names
+        period_name = ML_ENCODERS['period_classes'][period_pred]
+        decoration_name = ML_ENCODERS['decoration_classes'][decoration_pred]
+        vessel_name = ML_ENCODERS['vessel_classes'][vessel_pred]
+
+        period_conf = float(period_probs[0, period_pred].detach()) * 100
+        decoration_conf = float(decoration_probs[0, decoration_pred].detach()) * 100
+        vessel_conf = float(vessel_probs[0, vessel_pred].detach()) * 100
+
+        # Generate explanations
+        explanations = generate_explanations(
+            period_name, period_conf,
+            decoration_name, decoration_conf,
+            vessel_name, vessel_conf,
+            cam
+        )
+
+        return {
+            'success': True,
+            'heatmap': f'data:image/png;base64,{heatmap_b64}',
+            'predictions': {
+                'period': {'class': period_name, 'confidence': period_conf},
+                'decoration': {'class': decoration_name, 'confidence': decoration_conf},
+                'vessel_type': {'class': vessel_name, 'confidence': vessel_conf}
+            },
+            'explanations': explanations
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
+def generate_explanations(period, period_conf, decoration, decoration_conf, vessel, vessel_conf, cam):
+    """Generate human-readable explanations for predictions"""
+
+    explanations = {
+        'summary': '',
+        'period_reason': '',
+        'decoration_reason': '',
+        'vessel_reason': '',
+        'visual_focus': ''
+    }
+
+    # Period explanations
+    period_reasons = {
+        'Umm an-Nar': "Periodo Umm an-Nar (2700-2000 a.C.): caratterizzato da ceramica dipinta con motivi geometrici neri su fondo chiaro, tipica dell'Oman settentrionale.",
+        'Wadi Suq': "Periodo Wadi Suq (2000-1600 a.C.): transizione con ceramica più semplice, spesso non decorata o con decorazioni incise.",
+        'Late Bronze Age': "Tarda Età del Bronzo (1600-1250 a.C.): ceramica con influenze mesopotamiche, spesso con decorazioni a bande.",
+        '': "Periodo non determinabile con certezza dalle caratteristiche visive."
+    }
+
+    # Decoration explanations
+    decoration_reasons = {
+        'painted': "Decorazione dipinta: il modello ha identificato pattern di pigmento (nero, rosso o bruno) applicati sulla superficie.",
+        'plain': "Ceramica non decorata: superficie liscia senza motivi decorativi visibili.",
+        'decorated': "Decorazione generica: presenza di elementi ornamentali non classificabili specificamente.",
+        'incised': "Decorazione incisa: il modello ha rilevato linee incise o graffite sulla superficie.",
+        'black-on-grey': "Black-on-grey: decorazione tipica con motivi neri su fondo grigio chiaro.",
+        '': "Decorazione non determinabile."
+    }
+
+    # Vessel explanations
+    vessel_reasons = {
+        'plate': "Piatto: forma aperta e bassa con pareti poco profonde.",
+        'bowl': "Ciotola: forma aperta con pareti arrotondate e profondità media.",
+        'flask': "Fiasco/Fiaschetta: contenitore con collo stretto e corpo espanso.",
+        'jar': "Giara: contenitore da stoccaggio con apertura larga.",
+        'pot': "Pentola: recipiente profondo per cottura o conservazione.",
+        'ceramic': "Frammento ceramico generico non classificabile.",
+        'base': "Frammento di base del vaso.",
+        'body sherd': "Frammento di parete del vaso.",
+        'dish': "Piatto fondo o scodella.",
+        'carinated bowl': "Ciotola carenata con spigolo distintivo.",
+        'miniature vessel': "Vaso miniaturistico, possibile uso votivo.",
+        'unknown': "Forma non identificabile."
+    }
+
+    # Build explanations
+    explanations['period_reason'] = period_reasons.get(period, f"Periodo: {period}")
+    explanations['decoration_reason'] = decoration_reasons.get(decoration, f"Decorazione: {decoration}")
+    explanations['vessel_reason'] = vessel_reasons.get(vessel, f"Tipo: {vessel}")
+
+    # Confidence-based summary
+    avg_conf = (period_conf + decoration_conf + vessel_conf) / 3
+
+    if avg_conf > 90:
+        confidence_text = "Il modello è molto sicuro di questa classificazione."
+    elif avg_conf > 70:
+        confidence_text = "Il modello ha una buona confidenza, ma potrebbero esserci alternative."
+    elif avg_conf > 50:
+        confidence_text = "Classificazione incerta, verificare manualmente."
+    else:
+        confidence_text = "Bassa confidenza, il frammento potrebbe essere ambiguo."
+
+    # Visual focus based on CAM
+    cam_center = cam[cam.shape[0]//4:3*cam.shape[0]//4, cam.shape[1]//4:3*cam.shape[1]//4].mean()
+    cam_edges = (cam[:cam.shape[0]//4].mean() + cam[3*cam.shape[0]//4:].mean()) / 2
+
+    if cam_center > cam_edges * 1.3:
+        focus_area = "Il modello si concentra principalmente sulla parte centrale del frammento, probabilmente sulla decorazione o forma del corpo."
+    elif cam_edges > cam_center * 1.3:
+        focus_area = "Il modello analizza principalmente i bordi e il profilo, utili per identificare la forma del vaso."
+    else:
+        focus_area = "Il modello considera uniformemente l'intera superficie del frammento."
+
+    explanations['visual_focus'] = focus_area
+    explanations['summary'] = f"{confidence_text} {focus_area}"
+
+    return explanations
+
+
+def explain_similarity(img1_path, img2_data, similarity_score):
+    """Explain why two images are similar"""
+    try:
+        import torch
+        from PIL import Image
+        import numpy as np
+
+        if not load_embeddings():
+            return {'error': 'Embeddings not available'}
+
+        # Load both images
+        img1 = Image.open(img1_path).convert('RGB')
+
+        if ',' in img2_data:
+            img2_data = img2_data.split(',')[1]
+        img2_bytes = base64.b64decode(img2_data)
+        img2 = Image.open(io.BytesIO(img2_bytes)).convert('RGB')
+
+        # Get features for comparison
+        transform = ML_TRANSFORM
+
+        with torch.no_grad():
+            feat1 = FEATURE_EXTRACTOR(transform(img1).unsqueeze(0)).squeeze().numpy()
+            feat2 = FEATURE_EXTRACTOR(transform(img2).unsqueeze(0)).squeeze().numpy()
+
+        # Find which feature dimensions contribute most to similarity
+        # Cosine similarity breakdown
+        feat1_norm = feat1 / (np.linalg.norm(feat1) + 1e-8)
+        feat2_norm = feat2 / (np.linalg.norm(feat2) + 1e-8)
+
+        contributions = feat1_norm * feat2_norm
+        top_features = np.argsort(contributions)[-10:]  # Top 10 contributing features
+
+        # Map features to semantic meaning (simplified)
+        # In a real scenario, you'd analyze what each feature dimension represents
+        similarity_aspects = []
+
+        if similarity_score > 0.8:
+            similarity_aspects.append("Decorazione molto simile con pattern quasi identici")
+            similarity_aspects.append("Stessa tecnica decorativa")
+        elif similarity_score > 0.6:
+            similarity_aspects.append("Pattern decorativi correlati")
+            similarity_aspects.append("Stile artistico simile")
+        elif similarity_score > 0.4:
+            similarity_aspects.append("Alcune caratteristiche decorative in comune")
+            similarity_aspects.append("Possibile stessa tradizione ceramica")
+        else:
+            similarity_aspects.append("Somiglianza limitata, principalmente nella texture")
+
+        # Feature analysis
+        high_freq_features = np.sum(np.abs(feat1 - feat2) < 0.1) / len(feat1)
+        if high_freq_features > 0.7:
+            similarity_aspects.append("Texture della superficie molto simile")
+        if high_freq_features > 0.5:
+            similarity_aspects.append("Composizione generale comparabile")
+
+        return {
+            'success': True,
+            'similarity_score': similarity_score,
+            'aspects': similarity_aspects,
+            'explanation': f"Similarità del {similarity_score*100:.1f}%: " + "; ".join(similarity_aspects[:3])
         }
 
     except Exception as e:
@@ -480,6 +787,7 @@ def compute_similarity_statistics(similar_items):
 
 DEFAULT_CONFIG = {
     "collections": {
+        "Schmidt_Bat": {"name": "Schmidt - Bat (Oman)", "pdf": "/Volumes/extesione4T/KTM2025/Maurizio/Schmidt Bat.pdf", "color": "#9C27B0"},
         "Degli_Espositi": {"name": "Degli Espositi - Tesi MDE", "pdf": "PDFs/2- Capp.4-5-6+bibliografia.pdf", "color": "#4472C4"},
         "Righetti": {"name": "Righetti - Hili 8 / Wadi Suq", "pdf": "PDFs/Righetti_Thèse_Volume_II.pdf", "color": "#ED7D31"},
         "Pellegrino": {"name": "Pellegrino - Masafi / Dibba / Tell Abraq", "pdf": "PDFs/2021-11_Pellegrino_cér.pdf", "color": "#70AD47"}
@@ -826,6 +1134,46 @@ def get_statistics():
     return stats
 
 
+def get_decoration_catalog():
+    """Get decoration classification catalog (Schmidt Bat)"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT code, category, name_de, name_it, name_en,
+                   description, is_combination, base_codes, period, source,
+                   thumbnail_path, pdf_page, pdf_reference, period_diagnostic
+            FROM decoration_catalog
+            ORDER BY code
+        """)
+
+        catalog = []
+        for row in cursor.fetchall():
+            catalog.append({
+                'code': row['code'],
+                'category': row['category'],
+                'name_de': row['name_de'],
+                'name_it': row['name_it'],
+                'name_en': row['name_en'],
+                'description': row['description'],
+                'is_combination': bool(row['is_combination']),
+                'base_codes': row['base_codes'].split(',') if row['base_codes'] else [],
+                'period': row['period'],
+                'source': row['source'],
+                'thumbnail': row['thumbnail_path'],
+                'pdf_page': row['pdf_page'],
+                'pdf_reference': row['pdf_reference'],
+                'period_diagnostic': row['period_diagnostic']
+            })
+
+        conn.close()
+        return catalog
+    except:
+        conn.close()
+        return []
+
+
 # ============================================================================
 # AUTHENTICATION FUNCTIONS
 # ============================================================================
@@ -908,6 +1256,29 @@ def rotate_image(image_path, degrees):
         return True
     except Exception as e:
         print(f"Rotation error: {e}")
+        return False
+
+
+def flip_image(image_path, direction):
+    """Flip image horizontally or vertically
+    direction: 'horizontal' (mirror) or 'vertical'
+    """
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            return False
+
+        if direction == 'horizontal':
+            flipped = cv2.flip(img, 1)  # 1 = horizontal flip (mirror)
+        elif direction == 'vertical':
+            flipped = cv2.flip(img, 0)  # 0 = vertical flip
+        else:
+            return False
+
+        cv2.imwrite(image_path, flipped)
+        return True
+    except Exception as e:
+        print(f"Flip error: {e}")
         return False
 
 
@@ -1026,6 +1397,12 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(stats)
             return
 
+        # Get decoration catalog (public - Schmidt classification)
+        if parsed.path == '/api/v1/decoration-catalog':
+            catalog = get_decoration_catalog()
+            self.send_json({'catalog': catalog, 'count': len(catalog)})
+            return
+
         # ===== PROTECTED PAGES =====
 
         # Viewer page
@@ -1082,16 +1459,25 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith('/api/open-pdf'):
             page = query.get('page', ['1'])[0]
             collection = query.get('collection', [''])[0]
+            direct_pdf = query.get('pdf', [''])[0]  # Direct PDF path support
 
             page_match = re.search(r'p+\.?\s*(\d+)', page)
-            page_num = page_match.group(1) if page_match else '1'
+            page_num = page_match.group(1) if page_match else page if page.isdigit() else '1'
 
             if sys.platform == 'darwin':
-                config = load_config()
-                pdf_path = config.get('collections', {}).get(collection, {}).get('pdf', '')
-                if pdf_path:
-                    base_path = Path(__file__).parent
-                    full_pdf_path = str(base_path / pdf_path)
+                # Check for direct PDF path first
+                if direct_pdf and os.path.exists(direct_pdf):
+                    full_pdf_path = direct_pdf
+                else:
+                    config = load_config()
+                    pdf_path = config.get('collections', {}).get(collection, {}).get('pdf', '')
+                    if pdf_path:
+                        base_path = Path(__file__).parent
+                        full_pdf_path = str(base_path / pdf_path)
+                    else:
+                        full_pdf_path = None
+
+                if full_pdf_path:
                     script = f'''
                     do shell script "open -b com.apple.Preview " & quoted form of "{full_pdf_path}"
                     delay 2.5
@@ -1284,6 +1670,23 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': False, 'error': 'Rotation failed'})
             return
 
+        # Flip image (horizontal/vertical)
+        if parsed.path == '/api/flip-image':
+            if not self.require_admin():
+                return
+
+            image_path = post_data.get('path', '')
+            direction = post_data.get('direction', 'horizontal')
+
+            base_path = Path(__file__).parent
+            full_path = str(base_path / image_path)
+
+            if flip_image(full_path, direction):
+                self.send_json({'success': True})
+            else:
+                self.send_json({'success': False, 'error': 'Flip failed'})
+            return
+
         # Add vocabulary term
         if parsed.path == '/api/vocabulary':
             if not self.require_admin():
@@ -1314,6 +1717,17 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 return
 
             result = classify_image(image_data)
+            self.send_json(result)
+            return
+
+        # ML Explain Classification endpoint (with Grad-CAM)
+        if parsed.path == '/api/ml/explain':
+            image_data = post_data.get('image')
+            if not image_data:
+                self.send_json({'error': 'No image provided'}, 400)
+                return
+
+            result = explain_classification(image_data)
             self.send_json(result)
             return
 
@@ -1760,7 +2174,8 @@ def get_viewer_html(role):
         <div class="rotate-btns">
             <button class="rotate-btn" onclick="rotateImage(-90)" title="Rotate left">&#8634;</button>
             <button class="rotate-btn" onclick="rotateImage(90)" title="Rotate right">&#8635;</button>
-            <button class="rotate-btn" onclick="rotateImage(180)" title="Flip">&#8693;</button>
+            <button class="rotate-btn" onclick="flipImage('horizontal')" title="Flip horizontal (mirror)">&#8644;</button>
+            <button class="rotate-btn" onclick="flipImage('vertical')" title="Flip vertical">&#8645;</button>
         </div>
     ''' if is_admin else ''
 
@@ -1917,9 +2332,11 @@ def get_viewer_html(role):
         .tag.decorated {{ background: #e91e63; color: white; }}
         .tag.plain {{ background: #607d8b; color: white; }}
         .tag.vessel {{ background: #2196f3; color: white; }}
-        .content {{ flex: 1; display: flex; flex-direction: column; overflow: hidden; }}
+        .content {{ flex: 1; display: flex; flex-direction: column; overflow-y: auto; }}
         .image-viewer {{
-            flex: 1;
+            flex-shrink: 0;
+            min-height: 300px;
+            max-height: calc(100vh - 350px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -2189,6 +2606,8 @@ def get_viewer_html(role):
             display: flex;
             flex-direction: column;
             gap: 15px;
+            max-height: calc(100vh - 150px);
+            overflow-y: auto;
         }}
         .ml-drop-zone {{
             border: 3px dashed rgba(156, 39, 176, 0.5);
@@ -2212,6 +2631,80 @@ def get_viewer_html(role):
             display: none;
         }}
         .ml-preview.visible {{ display: block; margin: 10px auto; }}
+        /* Drawing tools */
+        .ml-image-container {{
+            position: relative;
+            display: inline-block;
+            margin: 10px auto;
+        }}
+        .ml-image-container img {{
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            display: block;
+        }}
+        .ml-draw-canvas {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 8px;
+            cursor: crosshair;
+        }}
+        .ml-draw-tools {{
+            display: none;
+            gap: 8px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+            align-items: center;
+        }}
+        .ml-draw-tools.visible {{ display: flex; }}
+        .draw-tool-btn {{
+            padding: 6px 12px;
+            border: 2px solid #444;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }}
+        .draw-tool-btn:hover {{ background: rgba(255,255,255,0.2); }}
+        .draw-tool-btn.active {{
+            border-color: #9c27b0;
+            background: rgba(156, 39, 176, 0.3);
+        }}
+        .draw-tool-btn.clear {{
+            border-color: #f44336;
+            color: #f44336;
+        }}
+        .draw-color-picker {{
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }}
+        .draw-color {{
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+        }}
+        .draw-color:hover {{ transform: scale(1.1); }}
+        .draw-color.active {{ border-color: white; }}
+        .draw-size-slider {{
+            width: 80px;
+            accent-color: #9c27b0;
+        }}
+        .ml-roi-indicator {{
+            background: rgba(156, 39, 176, 0.2);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            color: #ce93d8;
+            display: none;
+        }}
+        .ml-roi-indicator.visible {{ display: inline-block; }}
         .ml-classify-btn {{
             background: linear-gradient(135deg, #9c27b0, #6a1b9a);
             border: none;
@@ -2224,6 +2717,281 @@ def get_viewer_html(role):
         }}
         .ml-classify-btn:hover {{ transform: scale(1.02); }}
         .ml-classify-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .ml-explain-btn {{
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+            margin-left: 10px;
+        }}
+        .ml-explain-btn:hover {{ transform: scale(1.02); }}
+        .ml-explain-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .ml-explanation-panel {{
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+            max-height: 500px;
+            overflow-y: auto;
+        }}
+        .ml-explanation-panel.visible {{ display: block; }}
+        .ml-explanation-panel h4 {{
+            color: #ff9800;
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+        }}
+        .ml-heatmap-container {{
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }}
+        .ml-heatmap-container img {{
+            max-width: 200px;
+            border-radius: 8px;
+            border: 2px solid #333;
+        }}
+        .ml-predictions {{
+            flex: 1;
+        }}
+        .ml-pred-item {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4fc3f7;
+        }}
+        .ml-pred-item.period {{ border-left-color: #ff9800; }}
+        .ml-pred-item.decoration {{ border-left-color: #e91e63; }}
+        .ml-pred-item.vessel {{ border-left-color: #2196f3; }}
+        .ml-pred-item .pred-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }}
+        .ml-pred-item .pred-label {{
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+        }}
+        .ml-pred-item .pred-value {{
+            font-weight: bold;
+            font-size: 1.1em;
+        }}
+        .ml-pred-item .pred-conf {{
+            font-size: 0.9em;
+            color: #4caf50;
+        }}
+        .ml-pred-item .pred-bar {{
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 5px;
+        }}
+        .ml-pred-item .pred-bar-fill {{
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }}
+        .ml-pred-item.period .pred-bar-fill {{ background: #ff9800; }}
+        .ml-pred-item.decoration .pred-bar-fill {{ background: #e91e63; }}
+        .ml-pred-item.vessel .pred-bar-fill {{ background: #2196f3; }}
+        .ml-explanation-text {{
+            background: rgba(255, 152, 0, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            border-left: 4px solid #ff9800;
+        }}
+        .ml-explanation-text h5 {{
+            color: #ff9800;
+            margin: 0 0 10px 0;
+            font-size: 0.95em;
+        }}
+        .ml-explanation-text p {{
+            color: #ccc;
+            font-size: 0.9em;
+            line-height: 1.6;
+            margin: 8px 0;
+        }}
+        .ml-explanation-text .focus-area {{
+            color: #4fc3f7;
+            font-style: italic;
+        }}
+        /* Explain Modal */
+        .explain-modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 3000;
+            overflow-y: auto;
+        }}
+        .explain-modal.active {{ display: flex; flex-direction: column; }}
+        .explain-modal-header {{
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }}
+        .explain-modal-header h2 {{ color: white; margin: 0; font-size: 1.3em; }}
+        .explain-modal-close {{
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }}
+        .explain-modal-content {{
+            flex: 1;
+            padding: 25px;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+        }}
+        .explain-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }}
+        .explain-image-section {{
+            text-align: center;
+        }}
+        .explain-image-section img {{
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+            border: 3px solid #333;
+        }}
+        .explain-image-section p {{
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 10px;
+        }}
+        .explain-predictions {{
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }}
+        .explain-pred-card {{
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 15px 20px;
+            border-left: 5px solid #4fc3f7;
+        }}
+        .explain-pred-card.period {{ border-left-color: #ff9800; }}
+        .explain-pred-card.decoration {{ border-left-color: #e91e63; }}
+        .explain-pred-card.vessel {{ border-left-color: #2196f3; }}
+        .explain-pred-card .card-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .explain-pred-card .card-label {{
+            color: #888;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }}
+        .explain-pred-card .card-conf {{
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #4caf50;
+        }}
+        .explain-pred-card .card-value {{
+            font-size: 1.4em;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 8px;
+        }}
+        .explain-pred-card .card-bar {{
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }}
+        .explain-pred-card .card-bar-fill {{
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.8s ease;
+        }}
+        .explain-pred-card.period .card-bar-fill {{ background: linear-gradient(90deg, #ff9800, #ffb74d); }}
+        .explain-pred-card.decoration .card-bar-fill {{ background: linear-gradient(90deg, #e91e63, #f06292); }}
+        .explain-pred-card.vessel .card-bar-fill {{ background: linear-gradient(90deg, #2196f3, #64b5f6); }}
+        .explain-reasons {{
+            background: rgba(255, 152, 0, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 5px solid #ff9800;
+        }}
+        .explain-reasons h3 {{
+            color: #ff9800;
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+        }}
+        .explain-reasons p {{
+            color: #ddd;
+            line-height: 1.7;
+            margin: 12px 0;
+            font-size: 0.95em;
+        }}
+        .explain-reasons .focus-highlight {{
+            background: rgba(79, 195, 247, 0.15);
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 3px solid #4fc3f7;
+        }}
+        .explain-reasons .focus-highlight p {{
+            color: #4fc3f7;
+            margin: 0;
+        }}
+        /* Heatmap toggle on similar items */
+        .ml-match-card {{
+            position: relative;
+        }}
+        .ml-match-card .heatmap-overlay {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            border-radius: 8px;
+        }}
+        .ml-match-card.show-heatmap .heatmap-overlay {{
+            opacity: 0.7;
+        }}
+        .heatmap-toggle-btn {{
+            background: linear-gradient(135deg, #ff5722, #e64a19);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }}
+        .heatmap-toggle-btn.active {{
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+        }}
         .ml-results {{
             background: rgba(255,255,255,0.05);
             border-radius: 12px;
@@ -2521,6 +3289,68 @@ def get_viewer_html(role):
         .modal-btn.confirm {{ background: #4caf50; color: #fff; }}
         .modal-btn.danger {{ background: #f44336; color: #fff; }}
         .modal-btn:hover {{ opacity: 0.85; }}
+        /* Decoration Catalog */
+        .cat-filter-btn {{
+            padding: 6px 12px;
+            border: 1px solid #555;
+            background: #333;
+            color: #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }}
+        .cat-filter-btn.active {{ background: #4a6fa5; color: #fff; border-color: #4a6fa5; }}
+        .cat-filter-btn:hover {{ background: #444; }}
+        .cat-item {{
+            background: #2a2a2a;
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }}
+        .cat-item:hover {{ border-color: #4a6fa5; background: #333; }}
+        .cat-item.selected {{ border-color: #4caf50; background: #2a3a2a; }}
+        .cat-item-thumb {{
+            width: 100%;
+            height: 60px;
+            background: #fff;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }}
+        .cat-item-thumb img {{ max-width: 100%; max-height: 100%; object-fit: contain; }}
+        .cat-item-code {{ font-weight: bold; color: #4a6fa5; font-size: 1.1em; }}
+        .cat-item-name {{ font-size: 0.8em; color: #aaa; text-align: center; margin-top: 4px; }}
+        .cat-item-category {{ font-size: 0.7em; color: #666; margin-top: 2px; }}
+        .cat-item-info {{ cursor: pointer; flex: 1; }}
+        .cat-pdf-btn {{
+            margin-top: 5px;
+            padding: 4px 8px;
+            font-size: 0.75em;
+            background: #3a5a8a;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }}
+        .cat-pdf-btn:hover {{ background: #4a6fa5; }}
+        .cat-item-period {{
+            font-size: 0.65em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-top: 3px;
+            display: inline-block;
+        }}
+        .cat-item-period.umm-an-nar {{ background: #2d5a3d; color: #8fbc8f; }}
+        .cat-item-period.iron-age {{ background: #5a3d2d; color: #deb887; }}
+        .cat-item-period.multi-period {{ background: #3d3d5a; color: #b8b8d1; }}
         .edit-form {{ display: flex; flex-direction: column; gap: 12px; }}
         .edit-form label {{ color: #888; font-size: 0.8em; }}
         .edit-row {{ display: flex; gap: 10px; align-items: center; }}
@@ -3080,6 +3910,13 @@ def get_viewer_html(role):
                     </div>
                 </div>
                 <div class="edit-row">
+                    <label>Decoration Code:</label>
+                    <div style="display:flex;gap:5px;flex:1;">
+                        <input type="text" id="editDecorationCode" placeholder="e.g., 101, 124..." style="flex:1;padding:8px;border-radius:5px;border:1px solid #444;background:#333;color:#fff;">
+                        <button type="button" onclick="openDecorationCatalog()" style="padding:8px 12px;background:#4a6fa5;color:#fff;border:none;border-radius:5px;cursor:pointer;" title="Browse decoration catalog">📖 Catalog</button>
+                    </div>
+                </div>
+                <div class="edit-row">
                     <label>Decorative Motif:</label>
                     <div class="autocomplete-wrapper">
                         <input type="text" id="editMotivoDecorativo" placeholder="e.g., wavy lines, geometric...">
@@ -3151,6 +3988,30 @@ def get_viewer_html(role):
         </div>
     </div>
 
+    <!-- Decoration Catalog Modal -->
+    <div class="modal-overlay" id="decorationCatalogModal" style="z-index:20000;">
+        <div class="modal" style="max-width:900px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;">
+            <h3>📖 Decoration Catalog</h3>
+            <p style="font-size:0.8em;color:#888;margin:-10px 0 10px 0;">Source: Schmidt, Bat - Tab. 12 (Umm an-Nar period)</p>
+            <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                <button class="cat-filter-btn active" onclick="filterCatalog('all')">All</button>
+                <button class="cat-filter-btn" onclick="filterCatalog('bemalung')">Paintings</button>
+                <button class="cat-filter-btn" onclick="filterCatalog('kombination')">Combinations</button>
+                <button class="cat-filter-btn" onclick="filterCatalog('negativ')">Incised</button>
+                <button class="cat-filter-btn" onclick="filterCatalog('positiv')">Relief</button>
+            </div>
+            <input type="text" id="catalogSearch" placeholder="Search by code or name..."
+                   style="width:100%;padding:10px;margin-bottom:10px;border-radius:5px;border:1px solid #444;background:#333;color:#fff;"
+                   oninput="searchCatalog(this.value)">
+            <div id="catalogGrid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:10px 0;">
+                <!-- Catalog items will be loaded here -->
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" onclick="closeModal('decorationCatalogModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- PDF Viewer Modal -->
     <div class="pdf-modal" id="pdfModal">
         <div class="pdf-header">
@@ -3196,7 +4057,35 @@ def get_viewer_html(role):
                     <p style="font-size: 0.8em;">Supports JPG, PNG</p>
                 </div>
                 <input type="file" id="mlFileInput" accept="image/*" style="display: none;" onchange="handleMlFile(event)">
-                <img class="ml-preview" id="mlPreview">
+
+                <!-- Image with drawing canvas overlay -->
+                <div class="ml-image-container" id="mlImageContainer" style="display: none;">
+                    <img class="ml-preview" id="mlPreview">
+                    <canvas class="ml-draw-canvas" id="mlDrawCanvas"></canvas>
+                </div>
+
+                <!-- Drawing tools -->
+                <div class="ml-draw-tools" id="mlDrawTools">
+                    <button class="draw-tool-btn" id="drawRectBtn" onclick="setDrawTool('rect')" title="Rettangolo">
+                        &#9634; Rect
+                    </button>
+                    <button class="draw-tool-btn" id="drawFreeBtn" onclick="setDrawTool('free')" title="Disegno libero">
+                        &#9998; Free
+                    </button>
+                    <button class="draw-tool-btn clear" onclick="clearDrawing()" title="Cancella">
+                        &#128465; Clear
+                    </button>
+                    <span style="color: #888; font-size: 0.8em;">|</span>
+                    <div class="draw-color-picker">
+                        <div class="draw-color active" style="background: #ff5722;" onclick="setDrawColor('#ff5722')" title="Arancione"></div>
+                        <div class="draw-color" style="background: #4caf50;" onclick="setDrawColor('#4caf50')" title="Verde"></div>
+                        <div class="draw-color" style="background: #2196f3;" onclick="setDrawColor('#2196f3')" title="Blu"></div>
+                        <div class="draw-color" style="background: #ffeb3b;" onclick="setDrawColor('#ffeb3b')" title="Giallo"></div>
+                    </div>
+                    <input type="range" class="draw-size-slider" id="drawSizeSlider" min="2" max="20" value="5"
+                           oninput="setDrawSize(this.value)" title="Spessore">
+                    <span class="ml-roi-indicator" id="roiIndicator">&#127919; ROI attiva</span>
+                </div>
 
                 <div class="ml-threshold" style="margin-top: 15px;">
                     <label>Similarity Threshold: <span class="threshold-value" id="thresholdValue">30%</span></label>
@@ -3204,9 +4093,28 @@ def get_viewer_html(role):
                            oninput="updateThreshold(this.value)">
                 </div>
 
-                <button class="ml-classify-btn" id="mlClassifyBtn" onclick="runSimilaritySearch()" disabled>
-                    &#128269; Find Similar Decorations
-                </button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="ml-classify-btn" id="mlClassifyBtn" onclick="runSimilaritySearch()" disabled>
+                        &#128269; Find Similar
+                    </button>
+                    <button class="ml-explain-btn" id="mlExplainBtn" onclick="runExplainClassification()" disabled>
+                        &#129504; Classify & Explain
+                    </button>
+                </div>
+
+                <!-- Explanation Panel -->
+                <div class="ml-explanation-panel" id="mlExplanationPanel">
+                    <h4>&#129504; AI Classification & Explanation</h4>
+                    <div class="ml-heatmap-container">
+                        <div>
+                            <p style="color: #888; font-size: 0.8em; margin-bottom: 5px;">Grad-CAM Heatmap</p>
+                            <img id="mlHeatmap" src="" alt="Heatmap">
+                            <p style="color: #666; font-size: 0.7em; margin-top: 5px;">Zone rosse = aree di focus del modello</p>
+                        </div>
+                        <div class="ml-predictions" id="mlPredictions"></div>
+                    </div>
+                    <div class="ml-explanation-text" id="mlExplanationText"></div>
+                </div>
 
                 <!-- Carousel Section -->
                 <div id="mlCarouselSection" style="display: none; margin-top: 20px;">
@@ -3237,7 +4145,12 @@ def get_viewer_html(role):
                     <div class="ml-stats-grid" id="mlStatsGrid"></div>
                 </div>
 
-                <h3>&#128270; Visually Similar Ceramics <span id="mlMatchCount">(0)</span></h3>
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">&#128270; Visually Similar Ceramics <span id="mlMatchCount">(0)</span></h3>
+                    <button class="heatmap-toggle-btn" id="heatmapToggleBtn" onclick="toggleHeatmaps()" style="display: none;">
+                        &#128293; Show Heatmaps
+                    </button>
+                </div>
                 <p style="color: #888; font-size: 0.85em; margin-bottom: 15px;">
                     Ranked by visual similarity based on decoration patterns
                 </p>
@@ -3247,6 +4160,29 @@ def get_viewer_html(role):
                     </p>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Explain Modal (popup for AI explanation) -->
+    <div class="explain-modal" id="explainModal">
+        <div class="explain-modal-header">
+            <h2>&#129504; AI Classification & Explanation</h2>
+            <button class="explain-modal-close" onclick="closeExplainModal()">&#10005; Close</button>
+        </div>
+        <div class="explain-modal-content">
+            <div class="explain-grid">
+                <div class="explain-image-section">
+                    <p style="margin-bottom: 8px; color: #aaa;">Original Image</p>
+                    <img id="explainOriginal" src="" alt="Original">
+                </div>
+                <div class="explain-image-section">
+                    <p style="margin-bottom: 8px; color: #ff5722;">Grad-CAM Heatmap</p>
+                    <img id="explainHeatmap" src="" alt="Heatmap">
+                    <p>&#128308; Zone rosse = aree di maggior attenzione del modello</p>
+                </div>
+            </div>
+            <div class="explain-predictions" id="explainPredictions"></div>
+            <div class="explain-reasons" id="explainReasons"></div>
         </div>
     </div>
 
@@ -3609,6 +4545,28 @@ def get_viewer_html(role):
             .catch(err => alert('Error: ' + err));
         }}
 
+        function flipImage(direction) {{
+            if (!isAdmin) return;
+            const item = filteredData[currentIndex];
+            if (!item) return;
+
+            fetch('/api/flip-image', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ path: item.image_path, direction: direction }})
+            }})
+            .then(r => r.json())
+            .then(result => {{
+                if (result.success) {{
+                    item.rotated = true;  // Mark for cache-busting
+                    selectItem(currentIndex);
+                }} else {{
+                    alert('Flip error: ' + (result.error || 'Unknown'));
+                }}
+            }})
+            .catch(err => alert('Error: ' + err));
+        }}
+
         // PDF Viewer with PDF.js
         let pdfDoc = null;
         let pdfPageNum = 1;
@@ -3824,6 +4782,16 @@ def get_viewer_html(role):
             }}
         }}
 
+        // Drawing state
+        let drawTool = null;  // 'rect' or 'free'
+        let drawColor = '#ff5722';
+        let drawSize = 5;
+        let isDrawing = false;
+        let drawStartX = 0, drawStartY = 0;
+        let drawCtx = null;
+        let hasROI = false;
+        let originalMlImageData = null;
+
         function processImageFile(file) {{
             if (!file.type.startsWith('image/')) {{
                 alert('Please select an image file');
@@ -3833,16 +4801,203 @@ def get_viewer_html(role):
             const reader = new FileReader();
             reader.onload = (e) => {{
                 mlImageData = e.target.result;
+                originalMlImageData = e.target.result;
+
                 const preview = document.getElementById('mlPreview');
+                const container = document.getElementById('mlImageContainer');
+                const canvas = document.getElementById('mlDrawCanvas');
+                const tools = document.getElementById('mlDrawTools');
+
                 preview.src = mlImageData;
-                preview.classList.add('visible');
+
+                // Wait for image to load to set canvas size
+                preview.onload = () => {{
+                    container.style.display = 'block';
+                    tools.classList.add('visible');
+
+                    // Set canvas size to match image
+                    canvas.width = preview.offsetWidth;
+                    canvas.height = preview.offsetHeight;
+
+                    // Initialize canvas context
+                    drawCtx = canvas.getContext('2d');
+                    clearDrawing();
+
+                    // Setup canvas events
+                    setupCanvasEvents(canvas);
+                }};
+
                 document.getElementById('mlClassifyBtn').disabled = false;
+                document.getElementById('mlExplainBtn').disabled = false;
+
                 // Hide previous results
                 document.getElementById('mlAnalysis').style.display = 'none';
                 document.getElementById('mlStatsSection').style.display = 'none';
-                document.getElementById('mlMatchesGrid').innerHTML = '<p style="color: #666; text-align: center; grid-column: 1/-1;">Click "Find Similar Decorations" to search</p>';
+                document.getElementById('mlExplanationPanel').classList.remove('visible');
+                document.getElementById('mlMatchesGrid').innerHTML = '<p style="color: #666; text-align: center; grid-column: 1/-1;">Click "Find Similar" or "Classify & Explain"</p>';
             }};
             reader.readAsDataURL(file);
+        }}
+
+        function setupCanvasEvents(canvas) {{
+            canvas.onmousedown = (e) => startDraw(e, canvas);
+            canvas.onmousemove = (e) => draw(e, canvas);
+            canvas.onmouseup = () => endDraw();
+            canvas.onmouseleave = () => endDraw();
+
+            // Touch support
+            canvas.ontouchstart = (e) => {{ e.preventDefault(); startDraw(e.touches[0], canvas); }};
+            canvas.ontouchmove = (e) => {{ e.preventDefault(); draw(e.touches[0], canvas); }};
+            canvas.ontouchend = () => endDraw();
+        }}
+
+        function setDrawTool(tool) {{
+            drawTool = (drawTool === tool) ? null : tool;
+
+            document.getElementById('drawRectBtn').classList.toggle('active', drawTool === 'rect');
+            document.getElementById('drawFreeBtn').classList.toggle('active', drawTool === 'free');
+
+            const canvas = document.getElementById('mlDrawCanvas');
+            canvas.style.cursor = drawTool ? 'crosshair' : 'default';
+            canvas.style.pointerEvents = drawTool ? 'auto' : 'none';
+        }}
+
+        function setDrawColor(color) {{
+            drawColor = color;
+            document.querySelectorAll('.draw-color').forEach(el => {{
+                el.classList.toggle('active', el.style.background === color || el.style.backgroundColor === color);
+            }});
+        }}
+
+        function setDrawSize(size) {{
+            drawSize = parseInt(size);
+        }}
+
+        function startDraw(e, canvas) {{
+            if (!drawTool) return;
+
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            drawStartX = e.clientX - rect.left;
+            drawStartY = e.clientY - rect.top;
+
+            if (drawTool === 'free') {{
+                drawCtx.beginPath();
+                drawCtx.moveTo(drawStartX, drawStartY);
+            }}
+        }}
+
+        function draw(e, canvas) {{
+            if (!isDrawing || !drawTool) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (drawTool === 'free') {{
+                drawCtx.lineTo(x, y);
+                drawCtx.strokeStyle = drawColor;
+                drawCtx.lineWidth = drawSize;
+                drawCtx.lineCap = 'round';
+                drawCtx.lineJoin = 'round';
+                drawCtx.stroke();
+                hasROI = true;
+                document.getElementById('roiIndicator').classList.add('visible');
+            }} else if (drawTool === 'rect') {{
+                // Redraw for live preview
+                drawCtx.clearRect(0, 0, canvas.width, canvas.height);
+                drawCtx.strokeStyle = drawColor;
+                drawCtx.lineWidth = drawSize;
+                drawCtx.setLineDash([5, 5]);
+                drawCtx.strokeRect(drawStartX, drawStartY, x - drawStartX, y - drawStartY);
+                drawCtx.setLineDash([]);
+            }}
+        }}
+
+        function endDraw() {{
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            if (drawTool === 'rect') {{
+                hasROI = true;
+                document.getElementById('roiIndicator').classList.add('visible');
+            }}
+
+            // Update mlImageData with cropped/masked region if ROI exists
+            if (hasROI) {{
+                applyROIToImage();
+            }}
+        }}
+
+        function clearDrawing() {{
+            if (!drawCtx) return;
+
+            const canvas = document.getElementById('mlDrawCanvas');
+            drawCtx.clearRect(0, 0, canvas.width, canvas.height);
+            hasROI = false;
+            document.getElementById('roiIndicator').classList.remove('visible');
+
+            // Restore original image
+            mlImageData = originalMlImageData;
+        }}
+
+        function applyROIToImage() {{
+            // Get the drawn region and create a masked/cropped version
+            const canvas = document.getElementById('mlDrawCanvas');
+            const preview = document.getElementById('mlPreview');
+
+            // Create a composite image with the ROI highlighted
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = preview.naturalWidth;
+            tempCanvas.height = preview.naturalHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Draw original image
+            tempCtx.drawImage(preview, 0, 0);
+
+            // Scale the drawing to match original image size
+            const scaleX = preview.naturalWidth / canvas.width;
+            const scaleY = preview.naturalHeight / canvas.height;
+
+            // Get the bounding box of drawn content
+            const imageData = drawCtx.getImageData(0, 0, canvas.width, canvas.height);
+            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+            let hasPixels = false;
+
+            for (let y = 0; y < canvas.height; y++) {{
+                for (let x = 0; x < canvas.width; x++) {{
+                    const i = (y * canvas.width + x) * 4;
+                    if (imageData.data[i + 3] > 0) {{  // Alpha > 0
+                        hasPixels = true;
+                        minX = Math.min(minX, x);
+                        minY = Math.min(minY, y);
+                        maxX = Math.max(maxX, x);
+                        maxY = Math.max(maxY, y);
+                    }}
+                }}
+            }}
+
+            if (hasPixels && (maxX - minX) > 10 && (maxY - minY) > 10) {{
+                // Crop to ROI with some padding
+                const padding = 10;
+                const cropX = Math.max(0, (minX - padding) * scaleX);
+                const cropY = Math.max(0, (minY - padding) * scaleY);
+                const cropW = Math.min(preview.naturalWidth - cropX, (maxX - minX + padding * 2) * scaleX);
+                const cropH = Math.min(preview.naturalHeight - cropY, (maxY - minY + padding * 2) * scaleY);
+
+                // Create cropped canvas
+                const croppedCanvas = document.createElement('canvas');
+                croppedCanvas.width = cropW;
+                croppedCanvas.height = cropH;
+                const croppedCtx = croppedCanvas.getContext('2d');
+
+                croppedCtx.drawImage(preview, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+                // Update mlImageData with cropped image
+                mlImageData = croppedCanvas.toDataURL('image/png');
+
+                console.log('ROI applied: cropped to', cropW, 'x', cropH);
+            }}
         }}
 
         function updateThreshold(value) {{
@@ -3907,10 +5062,106 @@ def get_viewer_html(role):
             }} catch (err) {{
                 alert('Error: ' + err.message);
             }} finally {{
-                btn.innerHTML = '&#128269; Find Similar Decorations';
+                btn.innerHTML = '&#128269; Find Similar';
                 btn.disabled = false;
             }}
         }}
+
+        async function runExplainClassification() {{
+            if (!mlImageData) return;
+
+            const btn = document.getElementById('mlExplainBtn');
+            btn.disabled = true;
+            btn.innerHTML = '&#9203; Analyzing...';
+
+            try {{
+                const response = await fetch('/api/ml/explain', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ image: mlImageData }})
+                }});
+
+                const result = await response.json();
+
+                if (result.error) {{
+                    alert('Error: ' + result.error);
+                    return;
+                }}
+
+                // Store result for heatmap toggle
+                window.lastExplainResult = result;
+
+                // Open explain modal
+                document.getElementById('explainModal').classList.add('active');
+
+                // Display images
+                document.getElementById('explainOriginal').src = mlImageData;
+                document.getElementById('explainHeatmap').src = result.heatmap;
+
+                // Display predictions in modal
+                const predsDiv = document.getElementById('explainPredictions');
+                const preds = result.predictions;
+                predsDiv.innerHTML = `
+                    <div class="explain-pred-card period">
+                        <div class="card-header">
+                            <span class="card-label">&#128197; Periodo</span>
+                            <span class="card-conf">${{preds.period.confidence.toFixed(1)}}%</span>
+                        </div>
+                        <div class="card-value">${{preds.period.class || 'Non determinato'}}</div>
+                        <div class="card-bar"><div class="card-bar-fill" style="width: ${{preds.period.confidence}}%"></div></div>
+                    </div>
+                    <div class="explain-pred-card decoration">
+                        <div class="card-header">
+                            <span class="card-label">&#127912; Decorazione</span>
+                            <span class="card-conf">${{preds.decoration.confidence.toFixed(1)}}%</span>
+                        </div>
+                        <div class="card-value">${{preds.decoration.class || 'Non determinato'}}</div>
+                        <div class="card-bar"><div class="card-bar-fill" style="width: ${{preds.decoration.confidence}}%"></div></div>
+                    </div>
+                    <div class="explain-pred-card vessel">
+                        <div class="card-header">
+                            <span class="card-label">&#127994; Tipo Vaso</span>
+                            <span class="card-conf">${{preds.vessel_type.confidence.toFixed(1)}}%</span>
+                        </div>
+                        <div class="card-value">${{preds.vessel_type.class || 'Non determinato'}}</div>
+                        <div class="card-bar"><div class="card-bar-fill" style="width: ${{preds.vessel_type.confidence}}%"></div></div>
+                    </div>
+                `;
+
+                // Display explanations in modal
+                const explDiv = document.getElementById('explainReasons');
+                const expl = result.explanations;
+                explDiv.innerHTML = `
+                    <h3>&#128161; Perché questa classificazione?</h3>
+                    <p><strong>&#128197; Periodo:</strong> ${{expl.period_reason}}</p>
+                    <p><strong>&#127912; Decorazione:</strong> ${{expl.decoration_reason}}</p>
+                    <p><strong>&#127994; Tipo:</strong> ${{expl.vessel_reason}}</p>
+                    <div class="focus-highlight">
+                        <p>&#128065; <strong>Focus visivo:</strong> ${{expl.visual_focus}}</p>
+                    </div>
+                    <p style="margin-top: 20px; padding: 15px; background: rgba(76, 175, 80, 0.15); border-radius: 8px; border-left: 4px solid #4caf50;">
+                        <strong>&#9989; Riepilogo:</strong> ${{expl.summary}}
+                    </p>
+                `;
+
+            }} catch (err) {{
+                alert('Error: ' + err.message);
+            }} finally {{
+                btn.innerHTML = '&#129504; Classify & Explain';
+                btn.disabled = false;
+            }}
+        }}
+
+        function closeExplainModal() {{
+            document.getElementById('explainModal').classList.remove('active');
+        }}
+
+        // Close explain modal on Escape
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape' && document.getElementById('explainModal').classList.contains('active')) {{
+                closeExplainModal();
+            }}
+        }});
 
         async function buildAndAnimateCarousel() {{
             const carousel = document.getElementById('mlCarousel');
@@ -4095,24 +5346,111 @@ def get_viewer_html(role):
             statsSection.style.display = 'block';
         }}
 
+        let heatmapsVisible = false;
+        let matchHeatmaps = {{}};
+
         function displaySimilarMatches(items) {{
             const grid = document.getElementById('mlMatchesGrid');
+            const toggleBtn = document.getElementById('heatmapToggleBtn');
             document.getElementById('mlMatchCount').textContent = '(' + items.length + ')';
 
             if (items.length === 0) {{
                 grid.innerHTML = '<p style="color: #888; text-align: center; grid-column: 1/-1;">No visually similar ceramics found above threshold</p>';
+                toggleBtn.style.display = 'none';
                 return;
             }}
 
+            // Show heatmap toggle button
+            toggleBtn.style.display = 'inline-block';
+            heatmapsVisible = false;
+            toggleBtn.innerHTML = '&#128293; Show Heatmaps';
+            toggleBtn.classList.remove('active');
+
             grid.innerHTML = items.map(item => `
-                <div class="ml-match-card" onclick="selectMlMatch('${{item.id}}')">
-                    <img src="${{item.image_path || ''}}" alt="${{item.id}}"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22120%22><rect fill=%22%23333%22 width=%22150%22 height=%22120%22/><text fill=%22%23666%22 x=%2275%22 y=%2260%22 text-anchor=%22middle%22>No image</text></svg>'">
+                <div class="ml-match-card" data-id="${{item.id}}" onclick="selectMlMatch('${{item.id}}')">
+                    <div class="match-img-container" style="position: relative;">
+                        <img class="match-original" src="${{item.image_path || ''}}" alt="${{item.id}}"
+                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22120%22><rect fill=%22%23333%22 width=%22150%22 height=%22120%22/><text fill=%22%23666%22 x=%2275%22 y=%2260%22 text-anchor=%22middle%22>No image</text></svg>'">
+                        <img class="heatmap-overlay" src="" alt="heatmap" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.3s;">
+                    </div>
                     <div class="match-id">${{item.id}}</div>
                     <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
                     <div class="match-confidence">${{item.similarity}}% similar</div>
                 </div>
             `).join('');
+
+            // Preload heatmaps for top matches (lazy load)
+            matchHeatmaps = {{}};
+            items.slice(0, 10).forEach(item => {{
+                if (item.image_path) {{
+                    generateHeatmapForMatch(item.id, item.image_path);
+                }}
+            }});
+        }}
+
+        async function generateHeatmapForMatch(itemId, imagePath) {{
+            try {{
+                // Fetch the image and convert to base64
+                const response = await fetch(imagePath);
+                const blob = await response.blob();
+                const reader = new FileReader();
+
+                reader.onload = async () => {{
+                    const base64 = reader.result;
+
+                    // Get heatmap from API
+                    const apiResponse = await fetch('/api/ml/explain', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ image: base64 }})
+                    }});
+
+                    const result = await apiResponse.json();
+                    if (result.heatmap) {{
+                        matchHeatmaps[itemId] = result.heatmap;
+
+                        // If heatmaps are visible, update this one
+                        if (heatmapsVisible) {{
+                            const card = document.querySelector(`.ml-match-card[data-id="${{itemId}}"] .heatmap-overlay`);
+                            if (card) {{
+                                card.src = result.heatmap;
+                                card.style.opacity = '0.6';
+                            }}
+                        }}
+                    }}
+                }};
+                reader.readAsDataURL(blob);
+            }} catch (err) {{
+                console.log('Error generating heatmap for', itemId, err);
+            }}
+        }}
+
+        function toggleHeatmaps() {{
+            heatmapsVisible = !heatmapsVisible;
+            const toggleBtn = document.getElementById('heatmapToggleBtn');
+
+            if (heatmapsVisible) {{
+                toggleBtn.innerHTML = '&#128293; Hide Heatmaps';
+                toggleBtn.classList.add('active');
+
+                // Show heatmaps
+                document.querySelectorAll('.ml-match-card').forEach(card => {{
+                    const itemId = card.dataset.id;
+                    const overlay = card.querySelector('.heatmap-overlay');
+                    if (overlay && matchHeatmaps[itemId]) {{
+                        overlay.src = matchHeatmaps[itemId];
+                        overlay.style.opacity = '0.6';
+                    }}
+                }});
+            }} else {{
+                toggleBtn.innerHTML = '&#128293; Show Heatmaps';
+                toggleBtn.classList.remove('active');
+
+                // Hide heatmaps
+                document.querySelectorAll('.heatmap-overlay').forEach(overlay => {{
+                    overlay.style.opacity = '0';
+                }});
+            }}
         }}
 
         function selectMlMatch(itemId) {{
@@ -4152,6 +5490,7 @@ def get_viewer_html(role):
             if (!isAdmin || filteredData.length === 0) return;
             const item = filteredData[currentIndex];
             document.getElementById('editDecoration').value = item.decoration || '';
+            document.getElementById('editDecorationCode').value = item.decoration_code || '';
             document.getElementById('editVesselType').value = item.vessel_type || '';
             document.getElementById('editPartType').value = item.part_type || '';
             document.getElementById('editPeriod').value = item.period || '';
@@ -4171,6 +5510,7 @@ def get_viewer_html(role):
             const item = filteredData[currentIndex];
             const fields = {{
                 decoration: document.getElementById('editDecoration').value,
+                decoration_code: document.getElementById('editDecorationCode').value,
                 vessel_type: document.getElementById('editVesselType').value,
                 part_type: document.getElementById('editPartType').value,
                 period: document.getElementById('editPeriod').value,
@@ -4269,6 +5609,149 @@ def get_viewer_html(role):
 
         function closeModal(id) {{
             document.getElementById(id).classList.remove('active');
+        }}
+
+        // ===== DECORATION CATALOG =====
+        let decorationCatalog = [];
+        let catalogFilter = 'all';
+
+        async function loadDecorationCatalog() {{
+            if (decorationCatalog.length > 0) return;
+            try {{
+                const resp = await fetch('/api/v1/decoration-catalog');
+                const data = await resp.json();
+                decorationCatalog = data.catalog || [];
+                console.log('Loaded decoration catalog:', decorationCatalog.length, 'items');
+            }} catch (e) {{
+                console.error('Failed to load decoration catalog:', e);
+            }}
+        }}
+
+        function openDecorationCatalog() {{
+            loadDecorationCatalog().then(() => {{
+                renderCatalog();
+                document.getElementById('decorationCatalogModal').classList.add('active');
+            }});
+        }}
+
+        function renderCatalog() {{
+            const grid = document.getElementById('catalogGrid');
+            const searchTerm = (document.getElementById('catalogSearch')?.value || '').toLowerCase();
+
+            let items = decorationCatalog;
+
+            // Filter by category
+            if (catalogFilter !== 'all') {{
+                items = items.filter(item => item.category === catalogFilter);
+            }}
+
+            // Filter by search term
+            if (searchTerm) {{
+                items = items.filter(item =>
+                    item.code.toLowerCase().includes(searchTerm) ||
+                    (item.name_it || '').toLowerCase().includes(searchTerm) ||
+                    (item.name_en || '').toLowerCase().includes(searchTerm)
+                );
+            }}
+
+            grid.innerHTML = items.map((item, idx) => `
+                <div class="cat-item" data-code="${{item.code}}">
+                    <div class="cat-item-thumb" onclick="selectDecorationByIndex(${{idx}})">
+                        ${{item.thumbnail
+                            ? `<img src="/${{item.thumbnail}}" alt="${{item.code}}" onerror="this.parentElement.innerHTML='<span style=color:#999>${{item.code}}</span>'">`
+                            : `<span style="color:#999;font-size:1.5em">${{item.code}}</span>`
+                        }}
+                    </div>
+                    <div class="cat-item-info" onclick="selectDecorationByIndex(${{idx}})">
+                        <div class="cat-item-code">${{item.code}}</div>
+                        <div class="cat-item-name">${{item.name_en || item.name_it || ''}}</div>
+                        <div class="cat-item-category">${{getCategoryLabel(item.category)}}</div>
+                        ${{item.period_diagnostic ? `<div class="cat-item-period" title="${{item.period_diagnostic}}">${{getPeriodBadge(item.period_diagnostic)}}</div>` : ''}}
+                    </div>
+                    ${{item.pdf_page ? `<button class="cat-pdf-btn" onclick="event.stopPropagation(); openSchmidtPdf(${{item.pdf_page}})" title="Open PDF at page ${{item.pdf_page}}">📄 p.${{item.pdf_page}}</button>` : ''}}
+                </div>
+            `).join('');
+
+            // Store filtered items for selection
+            window.filteredCatalogItems = items;
+        }}
+
+        function filterCatalog(category) {{
+            catalogFilter = category;
+            document.querySelectorAll('.cat-filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderCatalog();
+        }}
+
+        function searchCatalog(term) {{
+            renderCatalog();
+        }}
+
+        function getCategoryLabel(cat) {{
+            const labels = {{
+                'bemalung': 'Painting',
+                'kombination': 'Combination',
+                'negativ': 'Incised',
+                'positiv': 'Relief',
+                'none': 'None'
+            }};
+            return labels[cat] || cat;
+        }}
+
+        function getPeriodBadge(diagnostic) {{
+            if (!diagnostic) return '';
+            if (diagnostic.includes('Iron Age') || diagnostic.includes('Eisenzeit')) {{
+                return `<span class="cat-item-period iron-age">Iron Age</span>`;
+            }} else if (diagnostic.includes('both') || diagnostic.includes('Wadi Suq')) {{
+                return `<span class="cat-item-period multi-period">Multi-period</span>`;
+            }} else if (diagnostic.includes('Umm an-Nar')) {{
+                return `<span class="cat-item-period umm-an-nar">Umm an-Nar</span>`;
+            }}
+            return '';
+        }}
+
+        // Open Schmidt PDF at specific page
+        const SCHMIDT_PDF_PATH = '/Volumes/extesione4T/KTM2025/Maurizio/Schmidt Bat.pdf';
+
+        function openSchmidtPdf(pageNum) {{
+            console.log('Opening Schmidt PDF at page', pageNum);
+            fetch(`/api/open-pdf?pdf=${{encodeURIComponent(SCHMIDT_PDF_PATH)}}&page=${{pageNum}}`)
+                .then(resp => resp.json())
+                .then(data => {{
+                    if (data.error) {{
+                        alert('Error opening PDF: ' + data.error);
+                    }}
+                }})
+                .catch(err => {{
+                    console.error('Failed to open PDF:', err);
+                }});
+        }}
+
+        function selectDecorationByIndex(idx) {{
+            const items = window.filteredCatalogItems;
+            if (!items || idx >= items.length) return;
+
+            const item = items[idx];
+            console.log('Selected decoration:', item);
+
+            document.getElementById('editDecorationCode').value = item.code;
+
+            // Also update motivo_decorativo with the English name
+            const motivoInput = document.getElementById('editMotivoDecorativo');
+            if (motivoInput) {{
+                motivoInput.value = item.name_en || item.name_it || '';
+            }}
+
+            closeModal('decorationCatalogModal');
+        }}
+
+        function selectDecoration(code, name) {{
+            document.getElementById('editDecorationCode').value = code;
+            const motivoInput = document.getElementById('editMotivoDecorativo');
+            if (motivoInput && name) {{
+                motivoInput.value = name;
+            }}
+            closeModal('decorationCatalogModal');
         }}
 
         function executeDelete() {{
@@ -5444,7 +6927,18 @@ def get_viewer_html(role):
             console.log('Updating color to:', color);
             viewer3dModel.traverse(function(child) {{
                 if (child.isMesh && child.material && child.userData.vesselMesh) {{
-                    child.material.color.setStyle(color);
+                    // For textured models, use emissive to tint the color
+                    if (child.userData.hasTexture && child.material.emissive) {{
+                        // Convert hex to RGB and apply as subtle tint
+                        const c = new THREE.Color(color);
+                        child.material.emissive = c;
+                        child.material.emissiveIntensity = 0.15;
+                        console.log('Applied emissive tint to textured mesh');
+                    }} else {{
+                        // For non-textured models, directly change color
+                        child.material.color.setStyle(color);
+                        console.log('Applied direct color to mesh');
+                    }}
                     child.material.needsUpdate = true;
                 }}
             }});
@@ -5474,12 +6968,22 @@ def get_viewer_html(role):
         function update3DEdgeColor(color) {{
             if (!viewer3dModel) return;
             console.log('Edge color:', color);
+            let edgesUpdated = 0;
             viewer3dModel.traverse(function(child) {{
-                if (child.userData.isEdge && child.material) {{
+                // Check for edges - they are LineSegments with isEdge userData
+                if (child.userData && child.userData.isEdge && child.material) {{
                     child.material.color.setStyle(color);
                     child.material.needsUpdate = true;
+                    edgesUpdated++;
+                }}
+                // Also check for LineSegments type as backup
+                if (child.isLineSegments && child.material) {{
+                    child.material.color.setStyle(color);
+                    child.material.needsUpdate = true;
+                    edgesUpdated++;
                 }}
             }});
+            console.log('Edges updated:', edgesUpdated);
         }}
 
         function update3DOpacity(value) {{

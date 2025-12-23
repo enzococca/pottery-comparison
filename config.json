@@ -1,5 +1,11 @@
 {
   "collections": {
+    "Schmidt_Bat": {
+      "name": "Schmidt - Bat (Oman)",
+      "pdf": "PDFs/Schmidt_Bat.pdf",
+      "color": "#9C27B0",
+      "description": "Ceramica da Bat, Oman - periodo Umm an-Nar (2700-2000 BC)"
+    },
     "Degli_Espositi": {
       "name": "Degli Espositi - Tesi MDE (ST1)",
       "pdf": "PDFs/2- Capp.4-5-6+bibliografia.pdf",
