@@ -96,6 +96,7 @@ ML_TRANSFORM = None
 EMBEDDINGS = None
 EMBEDDINGS_METADATA = None
 FEATURE_EXTRACTOR = None
+ML_DISABLED = False  # Set to True if ML fails to load (memory issues)
 
 # Configuration
 PORT = int(os.environ.get('PORT', 8080))
@@ -814,10 +815,16 @@ def load_embeddings():
         return True
 
     except MemoryError as e:
+        global ML_DISABLED
+        ML_DISABLED = True
         print(f"Memory error loading embeddings: {e}")
+        print("   ML similarity search has been disabled due to memory constraints")
         return False
     except Exception as e:
+        global ML_DISABLED
+        ML_DISABLED = True
         print(f"Error loading embeddings: {e}")
+        print("   ML similarity search has been disabled")
         import traceback
         traceback.print_exc()
         return False
@@ -825,6 +832,10 @@ def load_embeddings():
 
 def find_similar_images(image_data, top_k=20, threshold=0.5):
     """Find visually similar images using cosine similarity."""
+    global ML_DISABLED
+    if ML_DISABLED:
+        return {'error': 'ML features are disabled due to memory constraints. Please try again later or use a server with more memory.'}
+
     if not load_embeddings():
         return {'error': 'Embeddings not available'}
 
