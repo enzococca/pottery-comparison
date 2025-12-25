@@ -945,6 +945,83 @@ def run_auto_migrations():
         print("   Database schema is up to date")
 
 
+def sync_bundled_data():
+    """Sync data from bundled database to persistent database on Railway.
+    This ensures new collections added to the app are copied to the volume.
+    """
+    if not DATA_DIR:
+        return  # Not on Railway with persistent storage
+
+    bundled_db = Path(__file__).parent / "ceramica.db"
+    if not bundled_db.exists():
+        print("   No bundled database found, skipping sync")
+        return
+
+    print("   Checking for missing collections in persistent database...")
+
+    # Connect to persistent database
+    persistent_conn = get_db()
+    persistent_cursor = persistent_conn.cursor()
+
+    # Get collections in persistent DB
+    persistent_cursor.execute("SELECT DISTINCT collection FROM items")
+    persistent_collections = {row[0] for row in persistent_cursor.fetchall()}
+
+    # Connect to bundled database
+    bundled_conn = sqlite3.connect(str(bundled_db))
+    bundled_conn.row_factory = sqlite3.Row
+    bundled_cursor = bundled_conn.cursor()
+
+    # Get collections in bundled DB
+    bundled_cursor.execute("SELECT DISTINCT collection FROM items")
+    bundled_collections = {row[0] for row in bundled_cursor.fetchall()}
+
+    # Find missing collections
+    missing_collections = bundled_collections - persistent_collections
+
+    if not missing_collections:
+        print("   All collections are synced")
+        bundled_conn.close()
+        persistent_conn.close()
+        return
+
+    print(f"   Found missing collections: {missing_collections}")
+
+    # Copy missing collections
+    for collection in missing_collections:
+        print(f"   + Syncing collection: {collection}")
+
+        # Get all items from bundled DB for this collection
+        bundled_cursor.execute("SELECT * FROM items WHERE collection = ?", (collection,))
+        items = bundled_cursor.fetchall()
+
+        if not items:
+            continue
+
+        # Get column names
+        columns = [description[0] for description in bundled_cursor.description]
+
+        # Insert into persistent DB
+        placeholders = ','.join(['?' for _ in columns])
+        columns_str = ','.join(columns)
+
+        for item in items:
+            try:
+                persistent_cursor.execute(
+                    f"INSERT OR REPLACE INTO items ({columns_str}) VALUES ({placeholders})",
+                    tuple(item)
+                )
+            except Exception as e:
+                print(f"     ! Error inserting {item['id']}: {e}")
+
+        print(f"     Synced {len(items)} items from {collection}")
+
+    persistent_conn.commit()
+    bundled_conn.close()
+    persistent_conn.close()
+    print("   Database sync complete")
+
+
 def safe_int(value, default=0):
     """Safely convert value to int"""
     if value is None or value == '':
@@ -7042,6 +7119,7 @@ def main():
     # Initialize database
     init_db()
     run_auto_migrations()  # Auto-add new columns if missing
+    sync_bundled_data()    # Sync new collections from bundled DB to persistent DB
     migrate_csv_to_db()
 
     # Load config
