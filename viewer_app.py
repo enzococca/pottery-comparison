@@ -557,6 +557,7 @@ def load_embeddings():
 
     embeddings_path = ML_MODEL_DIR / "image_embeddings.npz"
     metadata_path = ML_MODEL_DIR / "embeddings_metadata.json"
+    feature_extractor_path = ML_MODEL_DIR / "feature_extractor.pt"
 
     if not embeddings_path.exists() or not metadata_path.exists():
         print("Embeddings not found. Run compute_embeddings.py first.")
@@ -587,11 +588,25 @@ def load_embeddings():
                 return x.view(x.size(0), -1)
 
         FEATURE_EXTRACTOR = FeatureExtractor()
-        # Load weights from pretrained model
-        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        FEATURE_EXTRACTOR.features.load_state_dict(
-            nn.Sequential(*list(resnet.children())[:-1]).state_dict()
-        )
+
+        # Try to load cached weights first, then download if needed
+        if feature_extractor_path.exists():
+            print("   Loading cached feature extractor weights...")
+            FEATURE_EXTRACTOR.load_state_dict(torch.load(feature_extractor_path, map_location='cpu', weights_only=True))
+        else:
+            print("   Downloading ResNet18 weights (first time only)...")
+            try:
+                resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+                FEATURE_EXTRACTOR.features.load_state_dict(
+                    nn.Sequential(*list(resnet.children())[:-1]).state_dict()
+                )
+                # Cache weights for future use
+                torch.save(FEATURE_EXTRACTOR.state_dict(), feature_extractor_path)
+                print(f"   Cached weights to {feature_extractor_path}")
+            except Exception as download_err:
+                print(f"   Warning: Could not download weights: {download_err}")
+                print("   Similarity search will use random weights (less accurate)")
+
         FEATURE_EXTRACTOR.eval()
 
         print(f"Loaded {len(EMBEDDINGS)} image embeddings for similarity search")
@@ -599,6 +614,8 @@ def load_embeddings():
 
     except Exception as e:
         print(f"Error loading embeddings: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
