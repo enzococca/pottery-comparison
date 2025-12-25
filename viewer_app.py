@@ -787,7 +787,7 @@ def compute_similarity_statistics(similar_items):
 
 DEFAULT_CONFIG = {
     "collections": {
-        "Schmidt_Bat": {"name": "Schmidt - Bat (Oman)", "pdf": "/Volumes/extesione4T/KTM2025/Maurizio/Schmidt Bat.pdf", "color": "#9C27B0"},
+        "Schmidt_Bat": {"name": "Schmidt - Bat (Oman)", "pdf": "PDFs/Schmidt_Bat.pdf", "color": "#9C27B0"},
         "Degli_Espositi": {"name": "Degli Espositi - Tesi MDE", "pdf": "PDFs/2- Capp.4-5-6+bibliografia.pdf", "color": "#4472C4"},
         "Righetti": {"name": "Righetti - Hili 8 / Wadi Suq", "pdf": "PDFs/Righetti_Thèse_Volume_II.pdf", "color": "#ED7D31"},
         "Pellegrino": {"name": "Pellegrino - Masafi / Dibba / Tell Abraq", "pdf": "PDFs/2021-11_Pellegrino_cér.pdf", "color": "#70AD47"}
@@ -5711,14 +5711,15 @@ def get_viewer_html(role):
         }}
 
         // Open Schmidt PDF at specific page
-        const SCHMIDT_PDF_PATH = '/Volumes/extesione4T/KTM2025/Maurizio/Schmidt Bat.pdf';
-
         function openSchmidtPdf(pageNum) {{
             console.log('Opening Schmidt PDF at page', pageNum);
-            fetch(`/api/open-pdf?pdf=${{encodeURIComponent(SCHMIDT_PDF_PATH)}}&page=${{pageNum}}`)
+            // Use browser-based PDF viewing with page fragment
+            fetch(`/api/pdf-url?collection=Schmidt_Bat&page=${{pageNum}}`)
                 .then(resp => resp.json())
                 .then(data => {{
-                    if (data.error) {{
+                    if (data.success && data.url) {{
+                        window.open(data.url, '_blank');
+                    }} else if (data.error) {{
                         alert('Error opening PDF: ' + data.error);
                     }}
                 }})
