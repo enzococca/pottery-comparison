@@ -741,7 +741,7 @@ def explain_similarity(img1_path, img2_data, similarity_score):
 
 def load_embeddings():
     """Load pre-computed image embeddings for similarity search."""
-    global EMBEDDINGS, EMBEDDINGS_METADATA, FEATURE_EXTRACTOR
+    global EMBEDDINGS, EMBEDDINGS_METADATA, FEATURE_EXTRACTOR, ML_DISABLED
 
     if EMBEDDINGS is not None:
         return True
@@ -815,13 +815,11 @@ def load_embeddings():
         return True
 
     except MemoryError as e:
-        global ML_DISABLED
         ML_DISABLED = True
         print(f"Memory error loading embeddings: {e}")
         print("   ML similarity search has been disabled due to memory constraints")
         return False
     except Exception as e:
-        global ML_DISABLED
         ML_DISABLED = True
         print(f"Error loading embeddings: {e}")
         print("   ML similarity search has been disabled")
