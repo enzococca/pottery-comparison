@@ -754,13 +754,21 @@ def load_embeddings():
         return False
 
     try:
+        import gc
+        gc.collect()  # Clean up memory before loading
+
         import torch
         import torch.nn as nn
-        from torchvision import transforms, models
+        from torchvision import models
+
+        # Set memory-efficient options
+        torch.set_num_threads(1)  # Limit CPU threads
 
         # Load embeddings
+        print("   Loading embeddings from disk...")
         data = np.load(embeddings_path)
         EMBEDDINGS = data['embeddings']
+        print(f"   Loaded {len(EMBEDDINGS)} embeddings")
 
         # Load metadata
         with open(metadata_path) as f:
@@ -777,6 +785,7 @@ def load_embeddings():
                 x = self.features(x)
                 return x.view(x.size(0), -1)
 
+        print("   Creating feature extractor...")
         FEATURE_EXTRACTOR = FeatureExtractor()
 
         # Try to load cached weights first, then download if needed
@@ -793,15 +802,20 @@ def load_embeddings():
                 # Cache weights for future use
                 torch.save(FEATURE_EXTRACTOR.state_dict(), feature_extractor_path)
                 print(f"   Cached weights to {feature_extractor_path}")
+                del resnet  # Free memory
             except Exception as download_err:
                 print(f"   Warning: Could not download weights: {download_err}")
                 print("   Similarity search will use random weights (less accurate)")
 
         FEATURE_EXTRACTOR.eval()
+        gc.collect()  # Clean up after loading
 
-        print(f"Loaded {len(EMBEDDINGS)} image embeddings for similarity search")
+        print(f"   Similarity search ready with {len(EMBEDDINGS)} images")
         return True
 
+    except MemoryError as e:
+        print(f"Memory error loading embeddings: {e}")
+        return False
     except Exception as e:
         print(f"Error loading embeddings: {e}")
         import traceback
