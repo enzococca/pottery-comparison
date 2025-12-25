@@ -210,6 +210,196 @@ def load_ml_model():
         return False
 
 
+def photo_to_drawing(image_data, threshold=18, min_area_pct=0.05, blur_size=9):
+    """
+    Convert a real photo to a drawing-like image.
+    v6: Configurable parameters for decoration extraction.
+
+    Args:
+        image_data: Base64 encoded image
+        threshold: Contrast threshold for decoration detection (default 18)
+        min_area_pct: Minimum area percentage for noise filtering (default 0.05)
+        blur_size: Bilateral filter size (default 9)
+
+    Returns base64 encoded processed image.
+    """
+    try:
+        from PIL import Image
+
+        # Decode base64 image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        img_array = np.array(img)
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+
+        # Step 1: Create mask for non-black areas (the ceramic object)
+        _, object_mask = cv2.threshold(gray, 20, 255, cv2.THRESH_BINARY)
+        kernel = np.ones((7, 7), np.uint8)
+        object_mask = cv2.morphologyEx(object_mask, cv2.MORPH_CLOSE, kernel)
+        object_mask = cv2.morphologyEx(object_mask, cv2.MORPH_OPEN, kernel)
+
+        # Step 2: Blur to reduce texture (configurable)
+        blur_size = max(1, blur_size if blur_size % 2 == 1 else blur_size + 1)  # Must be odd
+        gray_smooth = cv2.bilateralFilter(gray, blur_size, 50, 50)
+        gray_smooth = cv2.GaussianBlur(gray_smooth, (5, 5), 0)
+
+        # Step 3: Find decorations using local contrast (configurable threshold)
+        local_mean = cv2.blur(gray_smooth, (41, 41))
+        decoration_mask = (gray_smooth < (local_mean - threshold)).astype(np.uint8) * 255
+
+        # Step 4: Remove small noise using connected components (configurable min area)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(decoration_mask, connectivity=8)
+        min_area = int(gray.shape[0] * gray.shape[1] * (min_area_pct / 100.0))
+
+        # Create cleaned decoration mask
+        decoration_clean = np.zeros_like(decoration_mask)
+        for i in range(1, num_labels):  # Skip background (label 0)
+            if stats[i, cv2.CC_STAT_AREA] >= min_area:
+                decoration_clean[labels == i] = 255
+
+        # Step 5: Morphological cleanup - close small gaps, remove remaining noise
+        kernel_morph = np.ones((5, 5), np.uint8)
+        decoration_clean = cv2.morphologyEx(decoration_clean, cv2.MORPH_CLOSE, kernel_morph)
+        decoration_clean = cv2.morphologyEx(decoration_clean, cv2.MORPH_OPEN, kernel_morph)
+
+        # Step 6: Create result - white background, black decorations
+        result_gray = np.ones_like(gray) * 255
+        result_gray[decoration_clean > 0] = 0
+
+        # Step 7: Apply object mask - only show within ceramic area
+        result_gray = np.where(object_mask > 0, result_gray, 255).astype(np.uint8)
+
+        # Step 8: Add clean outline of the ceramic object
+        contours, _ = cv2.findContours(object_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(result_gray, contours, -1, 0, 2)
+
+        # Convert to 3-channel for consistency
+        result = cv2.cvtColor(result_gray, cv2.COLOR_GRAY2RGB)
+
+        # Encode back to base64
+        result_pil = Image.fromarray(result)
+        buffer = io.BytesIO()
+        result_pil.save(buffer, format='PNG')
+        result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return {
+            'success': True,
+            'processed_image': f'data:image/png;base64,{result_base64}',
+            'original_size': img.size,
+            'method': 'decoration_extraction_v5'
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
+def combine_drawing_with_contour(original_image, drawing_image, preprocessed_image=None):
+    """
+    Combine user's manual decoration drawing with automatically extracted ceramic contour.
+
+    Args:
+        original_image: Base64 encoded original photo
+        drawing_image: Base64 encoded user drawing (black lines on transparent/white)
+        preprocessed_image: Optional base64 encoded preprocessed image (with user's parameter settings)
+
+    If preprocessed_image is provided, it's used as the base (already has contour + auto-extracted decorations).
+    Otherwise, contour is extracted from original_image.
+
+    Returns base64 encoded combined image.
+    """
+    try:
+        from PIL import Image
+
+        # Decode original image (needed for dimensions)
+        if ',' in original_image:
+            original_image = original_image.split(',')[1]
+        original_bytes = base64.b64decode(original_image)
+        original = Image.open(io.BytesIO(original_bytes)).convert('RGB')
+        original_array = np.array(original)
+
+        # Decode drawing image
+        if ',' in drawing_image:
+            drawing_image = drawing_image.split(',')[1]
+        drawing_bytes = base64.b64decode(drawing_image)
+        drawing = Image.open(io.BytesIO(drawing_bytes)).convert('RGBA')
+        drawing_array = np.array(drawing)
+
+        # If preprocessed image is provided, use it as the base
+        if preprocessed_image:
+            if ',' in preprocessed_image:
+                preprocessed_image = preprocessed_image.split(',')[1]
+            preprocessed_bytes = base64.b64decode(preprocessed_image)
+            preprocessed = Image.open(io.BytesIO(preprocessed_bytes)).convert('RGB')
+            preprocessed_array = np.array(preprocessed)
+
+            # Convert to grayscale - preprocessed is white bg with black decorations/contour
+            result = cv2.cvtColor(preprocessed_array, cv2.COLOR_RGB2GRAY)
+        else:
+            # Extract contour from original image
+            gray = cv2.cvtColor(original_array, cv2.COLOR_RGB2GRAY)
+
+            # Create mask for non-black areas (the ceramic object)
+            _, object_mask = cv2.threshold(gray, 20, 255, cv2.THRESH_BINARY)
+            kernel = np.ones((7, 7), np.uint8)
+            object_mask = cv2.morphologyEx(object_mask, cv2.MORPH_CLOSE, kernel)
+            object_mask = cv2.morphologyEx(object_mask, cv2.MORPH_OPEN, kernel)
+
+            # Create result image - white background
+            result = np.ones((original_array.shape[0], original_array.shape[1]), dtype=np.uint8) * 255
+
+            # Extract and draw ceramic contour
+            contours, _ = cv2.findContours(object_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(result, contours, -1, 0, 2)
+
+        # Resize drawing to match result if needed
+        if drawing_array.shape[:2] != result.shape[:2]:
+            drawing_pil = Image.fromarray(drawing_array)
+            drawing_pil = drawing_pil.resize((result.shape[1], result.shape[0]), Image.Resampling.LANCZOS)
+            drawing_array = np.array(drawing_pil)
+
+        # Extract drawing marks (look for non-white, non-transparent pixels)
+        # The drawing has RGBA - alpha channel indicates drawn areas
+        if drawing_array.shape[2] == 4:
+            # Use alpha channel to find drawn areas
+            alpha = drawing_array[:, :, 3]
+            # Also check RGB - drawn areas are typically dark
+            rgb_dark = np.mean(drawing_array[:, :, :3], axis=2) < 200
+            drawing_mask = (alpha > 50) & rgb_dark
+        else:
+            # Fallback: just look for dark pixels
+            drawing_mask = np.mean(drawing_array[:, :, :3], axis=2) < 128
+
+        # Apply drawing to result (black where user drew)
+        result[drawing_mask] = 0
+
+        # Convert to 3-channel for consistency
+        result_rgb = cv2.cvtColor(result, cv2.COLOR_GRAY2RGB)
+
+        # Encode back to base64
+        result_pil = Image.fromarray(result_rgb)
+        buffer = io.BytesIO()
+        result_pil.save(buffer, format='PNG')
+        result_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return {
+            'success': True,
+            'combined_image': f'data:image/png;base64,{result_base64}',
+            'original_size': original.size
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
 def classify_image(image_data):
     """Classify an image using the ML model v2 - Period, Decoration, Vessel Type"""
     if not load_ml_model():
@@ -1803,12 +1993,55 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': False, 'error': 'Field and value required'})
             return
 
-        # ML Classification endpoint (public)
-        if parsed.path == '/api/ml/classify':
+        # ML Preprocess endpoint - convert real photo to drawing
+        if parsed.path == '/api/ml/preprocess':
             image_data = post_data.get('image')
             if not image_data:
                 self.send_json({'error': 'No image provided'}, 400)
                 return
+
+            # Get custom parameters if provided
+            params = post_data.get('params', {})
+            threshold = params.get('threshold', 18)
+            min_area = params.get('minArea', 0.05)
+            blur = params.get('blur', 9)
+
+            result = photo_to_drawing(image_data, threshold=threshold, min_area_pct=min_area, blur_size=blur)
+            self.send_json(result)
+            return
+
+        # ML Combine Drawing endpoint - combine user drawing with auto contour
+        if parsed.path == '/api/ml/combine-drawing':
+            original_image = post_data.get('original_image')
+            drawing_image = post_data.get('drawing')
+            preprocessed_image = post_data.get('preprocessed_image')  # Optional
+
+            if not original_image:
+                self.send_json({'error': 'No original image provided'}, 400)
+                return
+
+            if not drawing_image:
+                self.send_json({'error': 'No drawing provided'}, 400)
+                return
+
+            result = combine_drawing_with_contour(original_image, drawing_image, preprocessed_image)
+            self.send_json(result)
+            return
+
+        # ML Classification endpoint (public)
+        if parsed.path == '/api/ml/classify':
+            image_data = post_data.get('image')
+            preprocess = post_data.get('preprocess', False)
+
+            if not image_data:
+                self.send_json({'error': 'No image provided'}, 400)
+                return
+
+            # Apply preprocessing if real photo mode enabled
+            if preprocess:
+                preprocess_result = photo_to_drawing(image_data)
+                if preprocess_result.get('success'):
+                    image_data = preprocess_result['processed_image']
 
             result = classify_image(image_data)
             self.send_json(result)
@@ -1817,9 +2050,17 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         # ML Explain Classification endpoint (with Grad-CAM)
         if parsed.path == '/api/ml/explain':
             image_data = post_data.get('image')
+            preprocess = post_data.get('preprocess', False)
+
             if not image_data:
                 self.send_json({'error': 'No image provided'}, 400)
                 return
+
+            # Apply preprocessing if real photo mode enabled
+            if preprocess:
+                preprocess_result = photo_to_drawing(image_data)
+                if preprocess_result.get('success'):
+                    image_data = preprocess_result['processed_image']
 
             result = explain_classification(image_data)
             self.send_json(result)
@@ -1830,10 +2071,17 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             image_data = post_data.get('image')
             top_k = post_data.get('top_k', 20)
             threshold = post_data.get('threshold', 0.3)
+            preprocess = post_data.get('preprocess', False)
 
             if not image_data:
                 self.send_json({'error': 'No image provided'}, 400)
                 return
+
+            # Apply preprocessing if real photo mode enabled
+            if preprocess:
+                preprocess_result = photo_to_drawing(image_data)
+                if preprocess_result.get('success'):
+                    image_data = preprocess_result['processed_image']
 
             result = find_similar_images(image_data, top_k=top_k, threshold=threshold)
             self.send_json(result)
@@ -4187,7 +4435,98 @@ def get_viewer_html(role):
                            oninput="updateThreshold(this.value)">
                 </div>
 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <!-- Real Photo Toggle -->
+                <div class="ml-photo-toggle" style="margin-top: 15px; padding: 10px; background: #1a1a2e; border-radius: 8px; border: 1px solid #333;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="realPhotoToggle" onchange="toggleRealPhotoMode(this.checked)">
+                        <span style="font-size: 1.1em;">&#128247;</span>
+                        <span><strong>Foto Reale</strong></span>
+                        <span style="color: #888; font-size: 0.85em;">(preprocessing)</span>
+                    </label>
+
+                    <div id="realPhotoOptions" style="display: none; margin-top: 15px;">
+                        <!-- Parameter Sliders -->
+                        <div style="margin-bottom: 15px; padding: 10px; background: #252540; border-radius: 5px;">
+                            <p style="color: #aaa; font-size: 0.85em; margin-bottom: 10px;"><strong>Parametri Estrazione:</strong></p>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="color: #888; font-size: 0.8em; display: flex; justify-content: space-between;">
+                                    <span>Soglia Contrasto:</span>
+                                    <span id="thresholdValue">18</span>
+                                </label>
+                                <input type="range" id="contrastThreshold" min="5" max="50" value="18"
+                                    style="width: 100%;" onchange="updatePreprocessParams()">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="color: #888; font-size: 0.8em; display: flex; justify-content: space-between;">
+                                    <span>Area Minima (%):</span>
+                                    <span id="minAreaValue">0.05</span>
+                                </label>
+                                <input type="range" id="minAreaSlider" min="0.01" max="0.5" step="0.01" value="0.05"
+                                    style="width: 100%;" onchange="updatePreprocessParams()">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="color: #888; font-size: 0.8em; display: flex; justify-content: space-between;">
+                                    <span>Blur:</span>
+                                    <span id="blurValue">9</span>
+                                </label>
+                                <input type="range" id="blurSlider" min="1" max="25" step="2" value="9"
+                                    style="width: 100%;" onchange="updatePreprocessParams()">
+                            </div>
+
+                            <button onclick="applyPreprocessParams()" style="width: 100%; padding: 5px; margin-top: 5px; background: #4a4a6a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                &#128260; Applica Parametri
+                            </button>
+                        </div>
+
+                        <!-- Manual Drawing Section -->
+                        <div style="padding: 10px; background: #252540; border-radius: 5px;">
+                            <p style="color: #aaa; font-size: 0.85em; margin-bottom: 10px;"><strong>&#9999; Disegna Decorazioni:</strong></p>
+                            <p style="color: #666; font-size: 0.75em; margin-bottom: 10px;">Disegna sopra le decorazioni per estrarle manualmente</p>
+
+                            <div style="display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap;">
+                                <button id="drawModeBtn" onclick="setDrawMode('draw')" style="padding: 5px 10px; background: #6a4a9a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                    &#9999; Disegna
+                                </button>
+                                <button id="eraseModeBtn" onclick="setDrawMode('erase')" style="padding: 5px 10px; background: #4a4a6a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                    &#128065; Cancella
+                                </button>
+                                <button onclick="clearDrawing()" style="padding: 5px 10px; background: #6a4a4a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                    &#128465; Reset
+                                </button>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: #888; font-size: 0.8em;">Spessore pennello: <span id="brushSizeValue">15</span>px</label>
+                                <input type="range" id="brushSize" min="5" max="50" value="15" style="width: 100%;">
+                            </div>
+
+                            <!-- Drawing Canvas Container -->
+                            <div id="drawingContainer" style="position: relative; display: inline-block; border: 2px solid #444; border-radius: 5px; overflow: hidden;">
+                                <img id="drawingBaseImage" style="max-width: 280px; display: block;">
+                                <canvas id="drawingCanvas" style="position: absolute; top: 0; left: 0; cursor: crosshair;"></canvas>
+                            </div>
+
+                            <button onclick="openEnlargedDrawing()" style="width: 100%; padding: 6px; margin-top: 8px; background: #4a4a6a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                &#128269; Ingrandisci per Dettagli
+                            </button>
+
+                            <button onclick="applyManualDrawing()" style="width: 100%; padding: 8px; margin-top: 8px; background: #4a6a4a; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                &#10004; Usa Disegno (+ contorno auto)
+                            </button>
+                        </div>
+
+                        <!-- Preview -->
+                        <div style="margin-top: 15px;">
+                            <p style="color: #888; font-size: 0.8em; margin-bottom: 5px;">Preview conversione:</p>
+                            <img id="preprocessedPreview" style="max-width: 200px; border-radius: 5px; border: 1px solid #444;">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
                     <button class="ml-classify-btn" id="mlClassifyBtn" onclick="runSimilaritySearch()" disabled>
                         &#128269; Find Similar
                     </button>
@@ -4277,6 +4616,48 @@ def get_viewer_html(role):
             </div>
             <div class="explain-predictions" id="explainPredictions"></div>
             <div class="explain-reasons" id="explainReasons"></div>
+        </div>
+    </div>
+
+    <!-- Enlarged Drawing Modal -->
+    <div class="explain-modal" id="enlargedDrawingModal" style="z-index: 10001;">
+        <div class="explain-modal-header">
+            <h2>&#9999; Disegna Decorazioni (Vista Ingrandita)</h2>
+            <button class="explain-modal-close" onclick="closeEnlargedDrawing()">&#10005; Chiudi</button>
+        </div>
+        <div class="explain-modal-content" style="padding: 20px;">
+            <p style="color: #888; margin-bottom: 15px;">Disegna le decorazioni sull'immagine. Il contorno della ceramica verrà estratto automaticamente.</p>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
+                <button id="enlargedDrawModeBtn" onclick="setEnlargedDrawMode('draw')" style="padding: 8px 15px; background: #6a4a9a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                    &#9999; Disegna
+                </button>
+                <button id="enlargedEraseModeBtn" onclick="setEnlargedDrawMode('erase')" style="padding: 8px 15px; background: #4a4a6a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                    &#128065; Cancella
+                </button>
+                <button onclick="clearEnlargedDrawing()" style="padding: 8px 15px; background: #6a4a4a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                    &#128465; Reset
+                </button>
+                <span style="color: #888;">|</span>
+                <label style="color: #888; display: flex; align-items: center; gap: 5px;">
+                    Pennello: <span id="enlargedBrushSizeValue">20</span>px
+                    <input type="range" id="enlargedBrushSize" min="5" max="80" value="20" style="width: 100px;">
+                </label>
+            </div>
+
+            <div id="enlargedDrawingContainer" style="position: relative; display: inline-block; border: 2px solid #555; border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh;">
+                <img id="enlargedDrawingBaseImage" style="max-width: 800px; max-height: 65vh; display: block;">
+                <canvas id="enlargedDrawingCanvas" style="position: absolute; top: 0; left: 0; cursor: crosshair;"></canvas>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="applyEnlargedDrawing()" style="flex: 1; padding: 12px; background: #4a6a4a; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1.1em;">
+                    &#10004; Applica Disegno (+ contorno auto)
+                </button>
+                <button onclick="closeEnlargedDrawing()" style="padding: 12px 20px; background: #4a4a6a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                    Annulla
+                </button>
+            </div>
         </div>
     </div>
 
@@ -4819,6 +5200,466 @@ def get_viewer_html(role):
         let mlSimilarityResult = null;
         let mlChart = null;
         let allDbImages = [];
+        let realPhotoMode = false;
+        let manualDrawingData = null;
+        let preprocessedImageData = null;  // Stores preprocessed image with current parameters
+        let decoDrawMode = 'draw';
+        let isDecoDrawing = false;
+        let decoDrawingCtx = null;
+
+        // Preprocessing parameters
+        let preprocessParams = {{
+            threshold: 18,
+            minArea: 0.05,
+            blur: 9
+        }};
+
+        // Toggle real photo preprocessing mode
+        async function toggleRealPhotoMode(enabled) {{
+            realPhotoMode = enabled;
+            const optionsDiv = document.getElementById('realPhotoOptions');
+
+            if (enabled && mlImageData) {{
+                optionsDiv.style.display = 'block';
+                initDrawingCanvas();
+                await applyPreprocessParams();
+            }} else {{
+                optionsDiv.style.display = 'none';
+                manualDrawingData = null;
+            }}
+        }}
+
+        // Update parameter display values
+        function updatePreprocessParams() {{
+            const threshold = document.getElementById('contrastThreshold').value;
+            const minArea = document.getElementById('minAreaSlider').value;
+            const blur = document.getElementById('blurSlider').value;
+
+            document.getElementById('thresholdValue').textContent = threshold;
+            document.getElementById('minAreaValue').textContent = minArea;
+            document.getElementById('blurValue').textContent = blur;
+
+            preprocessParams = {{
+                threshold: parseInt(threshold),
+                minArea: parseFloat(minArea),
+                blur: parseInt(blur)
+            }};
+        }}
+
+        // Apply preprocessing with current parameters
+        async function applyPreprocessParams() {{
+            if (!mlImageData) return;
+
+            try {{
+                const response = await fetch('/api/ml/preprocess', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        image: mlImageData,
+                        params: preprocessParams
+                    }})
+                }});
+                const result = await response.json();
+                if (result.success) {{
+                    preprocessedImageData = result.processed_image;  // Store for later use
+                    document.getElementById('preprocessedPreview').src = result.processed_image;
+                }}
+            }} catch (e) {{
+                console.error('Preprocessing failed:', e);
+            }}
+        }}
+
+        // Initialize drawing canvas for decoration
+        function initDrawingCanvas() {{
+            if (!mlImageData) return;
+
+            const baseImg = document.getElementById('drawingBaseImage');
+            const canvas = document.getElementById('drawingCanvas');
+
+            baseImg.src = mlImageData;
+            baseImg.onload = function() {{
+                canvas.width = baseImg.offsetWidth;
+                canvas.height = baseImg.offsetHeight;
+                decoDrawingCtx = canvas.getContext('2d');
+                decoDrawingCtx.lineCap = 'round';
+                decoDrawingCtx.lineJoin = 'round';
+                clearDrawing();
+                setupDecoDrawingEvents(canvas);
+            }};
+        }}
+
+        // Setup drawing events for decoration canvas
+        function setupDecoDrawingEvents(canvas) {{
+            canvas.onmousedown = function(e) {{
+                isDecoDrawing = true;
+                if (decoDrawingCtx) decoDrawingCtx.beginPath();
+                decoDraw(e);
+            }};
+            canvas.onmousemove = function(e) {{
+                if (isDecoDrawing) decoDraw(e);
+            }};
+            canvas.onmouseup = function() {{
+                isDecoDrawing = false;
+                if (decoDrawingCtx) decoDrawingCtx.beginPath();
+            }};
+            canvas.onmouseleave = function() {{
+                isDecoDrawing = false;
+                if (decoDrawingCtx) decoDrawingCtx.beginPath();
+            }};
+
+            // Touch support
+            canvas.ontouchstart = function(e) {{
+                e.preventDefault();
+                isDecoDrawing = true;
+                if (decoDrawingCtx) decoDrawingCtx.beginPath();
+                decoDrawTouch(e);
+            }};
+            canvas.ontouchmove = function(e) {{
+                e.preventDefault();
+                if (isDecoDrawing) decoDrawTouch(e);
+            }};
+            canvas.ontouchend = function() {{
+                isDecoDrawing = false;
+                if (decoDrawingCtx) decoDrawingCtx.beginPath();
+            }};
+        }}
+
+        function decoDraw(e) {{
+            if (!decoDrawingCtx) return;
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const brushSize = document.getElementById('brushSize').value;
+            document.getElementById('brushSizeValue').textContent = brushSize;
+
+            decoDrawingCtx.lineWidth = brushSize;
+            if (decoDrawMode === 'draw') {{
+                decoDrawingCtx.globalCompositeOperation = 'source-over';
+                decoDrawingCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            }} else {{
+                decoDrawingCtx.globalCompositeOperation = 'destination-out';
+                decoDrawingCtx.strokeStyle = 'rgba(255, 255, 255, 1)';
+            }}
+
+            decoDrawingCtx.lineTo(x, y);
+            decoDrawingCtx.stroke();
+            decoDrawingCtx.beginPath();
+            decoDrawingCtx.moveTo(x, y);
+        }}
+
+        function decoDrawTouch(e) {{
+            if (!decoDrawingCtx) return;
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            const brushSize = document.getElementById('brushSize').value;
+            decoDrawingCtx.lineWidth = brushSize;
+            if (decoDrawMode === 'draw') {{
+                decoDrawingCtx.globalCompositeOperation = 'source-over';
+                decoDrawingCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            }} else {{
+                decoDrawingCtx.globalCompositeOperation = 'destination-out';
+            }}
+
+            decoDrawingCtx.lineTo(x, y);
+            decoDrawingCtx.stroke();
+            decoDrawingCtx.beginPath();
+            decoDrawingCtx.moveTo(x, y);
+        }}
+
+        function setDrawMode(mode) {{
+            decoDrawMode = mode;
+            document.getElementById('drawModeBtn').style.background = mode === 'draw' ? '#6a4a9a' : '#4a4a6a';
+            document.getElementById('eraseModeBtn').style.background = mode === 'erase' ? '#6a4a9a' : '#4a4a6a';
+            if (decoDrawingCtx) decoDrawingCtx.beginPath();
+        }}
+
+        function clearDrawing() {{
+            const canvas = document.getElementById('drawingCanvas');
+            if (!canvas) return;
+
+            // Get or create context
+            if (!decoDrawingCtx) {{
+                decoDrawingCtx = canvas.getContext('2d');
+            }}
+
+            if (decoDrawingCtx && canvas.width > 0) {{
+                decoDrawingCtx.clearRect(0, 0, canvas.width, canvas.height);
+                decoDrawingCtx.beginPath();
+            }}
+            manualDrawingData = null;
+        }}
+
+        // Apply manual drawing - sends to server to add ceramic contour
+        async function applyManualDrawing() {{
+            const canvas = document.getElementById('drawingCanvas');
+            const baseImg = document.getElementById('drawingBaseImage');
+
+            if (!canvas || canvas.width === 0) {{
+                alert('Nessun disegno da applicare');
+                return;
+            }}
+
+            // Create drawing data URL
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = baseImg.naturalWidth;
+            tempCanvas.height = baseImg.naturalHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // White background
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Scale and draw the user's drawing
+            const scaleX = baseImg.naturalWidth / canvas.width;
+            const scaleY = baseImg.naturalHeight / canvas.height;
+            tempCtx.scale(scaleX, scaleY);
+            tempCtx.drawImage(canvas, 0, 0);
+
+            const drawingData = tempCanvas.toDataURL('image/png');
+
+            // Send to server to combine with automatic contour extraction
+            // Use preprocessed image if available (user changed parameters)
+            try {{
+                const response = await fetch('/api/ml/combine-drawing', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        original_image: mlImageData,
+                        drawing: drawingData,
+                        preprocessed_image: preprocessedImageData  // Include if user changed params
+                    }})
+                }});
+                const result = await response.json();
+                if (result.success) {{
+                    manualDrawingData = result.combined_image;
+                    document.getElementById('preprocessedPreview').src = manualDrawingData;
+                    realPhotoMode = true;
+                    alert('Disegno + contorno applicati! Ora puoi usare Find Similar o Classify.');
+                }} else {{
+                    alert('Errore: ' + (result.error || 'Unknown error'));
+                }}
+            }} catch (e) {{
+                console.error('Error combining drawing:', e);
+                // Fallback: use drawing without contour
+                manualDrawingData = drawingData;
+                document.getElementById('preprocessedPreview').src = manualDrawingData;
+                realPhotoMode = true;
+                alert('Disegno applicato (senza contorno automatico)');
+            }}
+        }}
+
+        // ============ ENLARGED DRAWING MODAL ============
+        let enlargedDrawingCtx = null;
+        let isEnlargedDrawing = false;
+        let enlargedDrawMode = 'draw';
+
+        function openEnlargedDrawing() {{
+            if (!mlImageData) {{
+                alert("Carica prima un'immagine");
+                return;
+            }}
+
+            document.getElementById('enlargedDrawingModal').classList.add('active');
+
+            const baseImg = document.getElementById('enlargedDrawingBaseImage');
+            const canvas = document.getElementById('enlargedDrawingCanvas');
+
+            baseImg.src = mlImageData;
+            baseImg.onload = function() {{
+                canvas.width = baseImg.offsetWidth;
+                canvas.height = baseImg.offsetHeight;
+                enlargedDrawingCtx = canvas.getContext('2d');
+                enlargedDrawingCtx.lineCap = 'round';
+                enlargedDrawingCtx.lineJoin = 'round';
+
+                // Copy existing drawing from small canvas if any
+                const smallCanvas = document.getElementById('drawingCanvas');
+                if (smallCanvas && smallCanvas.width > 0 && decoDrawingCtx) {{
+                    const scaleX = canvas.width / smallCanvas.width;
+                    const scaleY = canvas.height / smallCanvas.height;
+                    enlargedDrawingCtx.scale(scaleX, scaleY);
+                    enlargedDrawingCtx.drawImage(smallCanvas, 0, 0);
+                    enlargedDrawingCtx.setTransform(1, 0, 0, 1, 0, 0);
+                }}
+
+                setupEnlargedDrawingEvents(canvas);
+            }};
+        }}
+
+        function closeEnlargedDrawing() {{
+            document.getElementById('enlargedDrawingModal').classList.remove('active');
+        }}
+
+        function setupEnlargedDrawingEvents(canvas) {{
+            canvas.onmousedown = function(e) {{
+                isEnlargedDrawing = true;
+                if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+                enlargedDraw(e);
+            }};
+            canvas.onmousemove = function(e) {{
+                if (isEnlargedDrawing) enlargedDraw(e);
+            }};
+            canvas.onmouseup = function() {{
+                isEnlargedDrawing = false;
+                if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+            }};
+            canvas.onmouseleave = function() {{
+                isEnlargedDrawing = false;
+                if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+            }};
+
+            // Touch support
+            canvas.ontouchstart = function(e) {{
+                e.preventDefault();
+                isEnlargedDrawing = true;
+                if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+                enlargedDrawTouch(e);
+            }};
+            canvas.ontouchmove = function(e) {{
+                e.preventDefault();
+                if (isEnlargedDrawing) enlargedDrawTouch(e);
+            }};
+            canvas.ontouchend = function() {{
+                isEnlargedDrawing = false;
+                if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+            }};
+        }}
+
+        function enlargedDraw(e) {{
+            if (!enlargedDrawingCtx) return;
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const brushSize = document.getElementById('enlargedBrushSize').value;
+            document.getElementById('enlargedBrushSizeValue').textContent = brushSize;
+
+            enlargedDrawingCtx.lineWidth = brushSize;
+            if (enlargedDrawMode === 'draw') {{
+                enlargedDrawingCtx.globalCompositeOperation = 'source-over';
+                enlargedDrawingCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            }} else {{
+                enlargedDrawingCtx.globalCompositeOperation = 'destination-out';
+            }}
+
+            enlargedDrawingCtx.lineTo(x, y);
+            enlargedDrawingCtx.stroke();
+            enlargedDrawingCtx.beginPath();
+            enlargedDrawingCtx.moveTo(x, y);
+        }}
+
+        function enlargedDrawTouch(e) {{
+            if (!enlargedDrawingCtx) return;
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            const brushSize = document.getElementById('enlargedBrushSize').value;
+            enlargedDrawingCtx.lineWidth = brushSize;
+            if (enlargedDrawMode === 'draw') {{
+                enlargedDrawingCtx.globalCompositeOperation = 'source-over';
+                enlargedDrawingCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            }} else {{
+                enlargedDrawingCtx.globalCompositeOperation = 'destination-out';
+            }}
+
+            enlargedDrawingCtx.lineTo(x, y);
+            enlargedDrawingCtx.stroke();
+            enlargedDrawingCtx.beginPath();
+            enlargedDrawingCtx.moveTo(x, y);
+        }}
+
+        function setEnlargedDrawMode(mode) {{
+            enlargedDrawMode = mode;
+            document.getElementById('enlargedDrawModeBtn').style.background = mode === 'draw' ? '#6a4a9a' : '#4a4a6a';
+            document.getElementById('enlargedEraseModeBtn').style.background = mode === 'erase' ? '#6a4a9a' : '#4a4a6a';
+            if (enlargedDrawingCtx) enlargedDrawingCtx.beginPath();
+        }}
+
+        function clearEnlargedDrawing() {{
+            const canvas = document.getElementById('enlargedDrawingCanvas');
+            if (canvas && enlargedDrawingCtx) {{
+                enlargedDrawingCtx.clearRect(0, 0, canvas.width, canvas.height);
+                enlargedDrawingCtx.beginPath();
+            }}
+        }}
+
+        async function applyEnlargedDrawing() {{
+            const canvas = document.getElementById('enlargedDrawingCanvas');
+            const baseImg = document.getElementById('enlargedDrawingBaseImage');
+
+            if (!canvas || canvas.width === 0) {{
+                alert('Nessun disegno da applicare');
+                return;
+            }}
+
+            // Create drawing at full resolution
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = baseImg.naturalWidth;
+            tempCanvas.height = baseImg.naturalHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            const scaleX = baseImg.naturalWidth / canvas.width;
+            const scaleY = baseImg.naturalHeight / canvas.height;
+            tempCtx.scale(scaleX, scaleY);
+            tempCtx.drawImage(canvas, 0, 0);
+
+            const drawingData = tempCanvas.toDataURL('image/png');
+
+            // Send to server to combine with contour
+            // Use preprocessed image if available (user changed parameters)
+            try {{
+                const response = await fetch('/api/ml/combine-drawing', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        original_image: mlImageData,
+                        drawing: drawingData,
+                        preprocessed_image: preprocessedImageData  // Include if user changed params
+                    }})
+                }});
+                const result = await response.json();
+                if (result.success) {{
+                    manualDrawingData = result.combined_image;
+                    document.getElementById('preprocessedPreview').src = manualDrawingData;
+
+                    // Also copy to small canvas for display
+                    const smallCanvas = document.getElementById('drawingCanvas');
+                    if (smallCanvas && decoDrawingCtx) {{
+                        const smallScaleX = smallCanvas.width / canvas.width;
+                        const smallScaleY = smallCanvas.height / canvas.height;
+                        decoDrawingCtx.clearRect(0, 0, smallCanvas.width, smallCanvas.height);
+                        decoDrawingCtx.scale(smallScaleX, smallScaleY);
+                        decoDrawingCtx.drawImage(canvas, 0, 0);
+                        decoDrawingCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    }}
+
+                    realPhotoMode = true;
+                    closeEnlargedDrawing();
+                    alert('Disegno + contorno applicati!');
+                }} else {{
+                    alert('Errore: ' + (result.error || 'Unknown error'));
+                }}
+            }} catch (e) {{
+                console.error('Error:', e);
+                manualDrawingData = drawingData;
+                realPhotoMode = true;
+                closeEnlargedDrawing();
+                alert('Disegno applicato (senza contorno)');
+            }}
+        }}
 
         function openMlClassifier() {{
             document.getElementById('mlModal').classList.add('active');
@@ -5115,13 +5956,19 @@ def get_viewer_html(role):
             try {{
                 const threshold = parseInt(document.getElementById('mlThreshold').value) / 100;
 
+                // Use manual drawing if available, otherwise original image
+                const imageToUse = manualDrawingData || mlImageData;
+                const usePreprocess = realPhotoMode && !manualDrawingData;
+
                 const response = await fetch('/api/ml/similar', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
-                        image: mlImageData,
+                        image: imageToUse,
                         top_k: 30,
-                        threshold: threshold
+                        threshold: threshold,
+                        preprocess: usePreprocess,
+                        params: preprocessParams
                     }})
                 }});
 
@@ -5169,10 +6016,14 @@ def get_viewer_html(role):
             btn.innerHTML = '&#9203; Analyzing...';
 
             try {{
+                // Use manual drawing if available, otherwise original image
+                const imageToUse = manualDrawingData || mlImageData;
+                const usePreprocess = realPhotoMode && !manualDrawingData;
+
                 const response = await fetch('/api/ml/explain', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ image: mlImageData }})
+                    body: JSON.stringify({{ image: imageToUse, preprocess: usePreprocess, params: preprocessParams }})
                 }});
 
                 const result = await response.json();
