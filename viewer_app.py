@@ -2068,23 +2068,28 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Image Similarity Search endpoint
         if parsed.path == '/api/ml/similar':
-            image_data = post_data.get('image')
-            top_k = post_data.get('top_k', 20)
-            threshold = post_data.get('threshold', 0.3)
-            preprocess = post_data.get('preprocess', False)
+            try:
+                image_data = post_data.get('image')
+                top_k = post_data.get('top_k', 20)
+                threshold = post_data.get('threshold', 0.3)
+                preprocess = post_data.get('preprocess', False)
 
-            if not image_data:
-                self.send_json({'error': 'No image provided'}, 400)
-                return
+                if not image_data:
+                    self.send_json({'error': 'No image provided'}, 400)
+                    return
 
-            # Apply preprocessing if real photo mode enabled
-            if preprocess:
-                preprocess_result = photo_to_drawing(image_data)
-                if preprocess_result.get('success'):
-                    image_data = preprocess_result['processed_image']
+                # Apply preprocessing if real photo mode enabled
+                if preprocess:
+                    preprocess_result = photo_to_drawing(image_data)
+                    if preprocess_result.get('success'):
+                        image_data = preprocess_result['processed_image']
 
-            result = find_similar_images(image_data, top_k=top_k, threshold=threshold)
-            self.send_json(result)
+                result = find_similar_images(image_data, top_k=top_k, threshold=threshold)
+                self.send_json(result)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.send_json({'error': f'Similarity search failed: {str(e)}', 'similar_items': []}, 500)
             return
 
         # Get all images for carousel animation
@@ -5972,6 +5977,11 @@ def get_viewer_html(role):
                     }})
                 }});
 
+                // Check for HTTP errors (502, 500, etc.)
+                if (!response.ok) {{
+                    throw new Error('Server error: ' + response.status + ' - ' + response.statusText);
+                }}
+
                 const result = await response.json();
 
                 if (result.error) {{
@@ -5981,24 +5991,29 @@ def get_viewer_html(role):
                     return;
                 }}
 
+                // Validate response structure
+                if (!result.similar_items) {{
+                    throw new Error('Invalid response: missing similar_items');
+                }}
+
                 mlSimilarityResult = result;
 
                 // Stop carousel animation
                 document.getElementById('mlCarousel').classList.add('paused');
                 document.getElementById('mlProgressBar').style.width = '100%';
-                document.getElementById('mlProgressText').textContent = 'Analysis complete! Compared ' + result.total_compared + ' images.';
+                document.getElementById('mlProgressText').textContent = 'Analysis complete! Compared ' + (result.total_compared || 0) + ' images.';
 
                 // Highlight matched items in carousel
-                highlightMatchesInCarousel(result.similar_items);
+                highlightMatchesInCarousel(result.similar_items || []);
 
                 // Display analysis
-                displayAnalysis(result.analysis);
+                displayAnalysis(result.analysis || {{}});
 
                 // Display statistics chart
-                displayStatistics(result.statistics, result.similar_items);
+                displayStatistics(result.statistics || {{}}, result.similar_items || []);
 
                 // Display matches
-                displaySimilarMatches(result.similar_items);
+                displaySimilarMatches(result.similar_items || []);
 
             }} catch (err) {{
                 alert('Error: ' + err.message);
