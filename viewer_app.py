@@ -3580,24 +3580,51 @@ def get_viewer_html(role):
             color: #4fc3f7;
             margin: 0;
         }}
-        /* Heatmap toggle on similar items */
+        /* Per-match similarity heatmap (shown BELOW the match thumbnail,
+           not on top of it, so the user can compare query+heatmap against
+           the match itself) */
         .ml-match-card {{
             position: relative;
         }}
-        .ml-match-card .heatmap-overlay {{
-            position: absolute;
-            top: 0;
-            left: 0;
+        .ml-match-card .heatmap-block {{
+            display: none;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #444;
+            text-align: center;
+        }}
+        .ml-match-card.show-heatmap .heatmap-block {{
+            display: block;
+        }}
+        .ml-match-card .heatmap-block img {{
             width: 100%;
-            height: 100%;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-            border-radius: 8px;
+            max-height: 100px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.3);
         }}
-        .ml-match-card.show-heatmap .heatmap-overlay {{
-            opacity: 0.7;
+        .ml-match-card .heatmap-block .heatmap-label {{
+            font-size: 10px;
+            color: #ff9800;
+            margin-top: 3px;
+            letter-spacing: 0.3px;
         }}
+        .ml-match-card .heatmap-block.loading::before {{
+            content: 'caricamento heatmap...';
+            display: block;
+            font-size: 10px;
+            color: #888;
+            padding: 18px 0;
+        }}
+        .ml-match-card .heatmap-block.loading img {{ display: none; }}
+        .ml-match-card .heatmap-block.error::before {{
+            content: 'heatmap non disponibile';
+            display: block;
+            font-size: 10px;
+            color: #c66;
+            padding: 18px 0;
+        }}
+        .ml-match-card .heatmap-block.error img {{ display: none; }}
         .heatmap-toggle-btn {{
             background: linear-gradient(135deg, #ff5722, #e64a19);
             border: none;
@@ -6608,14 +6635,17 @@ def get_viewer_html(role):
 
             grid.innerHTML = fallbackBanner + items.map(item => `
                 <div class="ml-match-card${{item.below_threshold ? ' below-threshold' : ''}}" data-id="${{item.id}}" onclick="selectMlMatch('${{item.id}}')">
-                    <div class="match-img-container" style="position: relative;">
+                    <div class="match-img-container">
                         <img class="match-original" src="${{item.image_path || ''}}" alt="${{item.id}}"
                              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22120%22><rect fill=%22%23333%22 width=%22150%22 height=%22120%22/><text fill=%22%23666%22 x=%2275%22 y=%2260%22 text-anchor=%22middle%22>No image</text></svg>'">
-                        <img class="heatmap-overlay" src="" alt="heatmap" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.3s;">
                     </div>
                     <div class="match-id">${{item.id}}</div>
                     <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
                     <div class="match-confidence">${{item.similarity}}% similar${{item.below_threshold ? ' <span style=&quot;color:#b8860b&quot;>(sotto soglia)</span>' : ''}}</div>
+                    <div class="heatmap-block">
+                        <img class="heatmap-overlay" src="" alt="similarity heatmap on your image">
+                        <div class="heatmap-label">la TUA immagine &middot; zone che guidano questo match</div>
+                    </div>
                 </div>
             `).join('');
 
@@ -6627,9 +6657,6 @@ def get_viewer_html(role):
 
         async function generateHeatmapForMatch(itemId, imagePath) {{
             try {{
-                // Issue A: similarity-faithful heatmap — overlay on the QUERY,
-                // not the match. Shows what region of the user's image drove
-                // the cosine similarity with this match.
                 const queryImage = manualDrawingData || mlImageData;
                 if (!queryImage || !imagePath) return;
 
@@ -6641,19 +6668,24 @@ def get_viewer_html(role):
                         match_image_path: imagePath,
                     }})
                 }});
+                if (!apiResponse.ok) {{
+                    throw new Error('HTTP ' + apiResponse.status);
+                }}
                 const result = await apiResponse.json();
                 if (result.heatmap) {{
                     matchHeatmaps[itemId] = result.heatmap;
-                    if (heatmapsVisible) {{
-                        const card = document.querySelector(`.ml-match-card[data-id="${{itemId}}"] .heatmap-overlay`);
-                        if (card) {{
-                            card.src = result.heatmap;
-                            card.style.opacity = '0.85';
-                        }}
+                    const overlay = document.querySelector(
+                        `.ml-match-card[data-id="${{itemId}}"] .heatmap-overlay`
+                    );
+                    if (overlay) {{
+                        overlay.src = result.heatmap;
                     }}
+                }} else {{
+                    throw new Error(result.error || 'no heatmap returned');
                 }}
             }} catch (err) {{
                 console.log('Error generating heatmap for', itemId, err);
+                throw err;
             }}
         }}
 
@@ -6661,43 +6693,55 @@ def get_viewer_html(role):
             heatmapsVisible = !heatmapsVisible;
             const toggleBtn = document.getElementById('heatmapToggleBtn');
 
-            if (heatmapsVisible) {{
-                toggleBtn.innerHTML = '&#9203; Loading heatmaps...';
-                toggleBtn.classList.add('active');
-
-                const cards = Array.from(document.querySelectorAll('.ml-match-card'));
-                // Sequential fetch: only one Grad-CAM at a time so the worker
-                // (single-threaded, tight RAM) doesn't get hammered.
-                for (const card of cards.slice(0, 10)) {{
-                    if (!heatmapsVisible) break; // user toggled off mid-load
-                    const itemId = card.dataset.id;
-                    const overlay = card.querySelector('.heatmap-overlay');
-                    if (!overlay) continue;
-                    const matchOriginal = card.querySelector('.match-original');
-                    const imagePath = matchOriginal ? matchOriginal.getAttribute('src') : null;
-                    if (!imagePath) continue;
-                    try {{
-                        if (!matchHeatmaps[itemId]) {{
-                            await generateHeatmapForMatch(itemId, imagePath);
-                        }}
-                        if (matchHeatmaps[itemId]) {{
-                            overlay.src = matchHeatmaps[itemId];
-                            overlay.style.opacity = '0.85';
-                        }}
-                    }} catch (err) {{
-                        console.warn('heatmap failed for', itemId, err);
-                    }}
-                }}
-                if (heatmapsVisible) {{
-                    toggleBtn.innerHTML = '&#128293; Hide similarity heatmaps';
-                }}
-            }} else {{
+            if (!heatmapsVisible) {{
                 toggleBtn.innerHTML = '&#128293; Show similarity heatmaps';
                 toggleBtn.classList.remove('active');
+                document.querySelectorAll('.ml-match-card').forEach(c => c.classList.remove('show-heatmap'));
+                return;
+            }}
 
-                document.querySelectorAll('.heatmap-overlay').forEach(overlay => {{
-                    overlay.style.opacity = '0';
-                }});
+            toggleBtn.classList.add('active');
+            const cards = Array.from(document.querySelectorAll('.ml-match-card')).slice(0, 10);
+            // Reveal blocks immediately with loading state
+            cards.forEach(card => {{
+                card.classList.add('show-heatmap');
+                const block = card.querySelector('.heatmap-block');
+                if (!block) return;
+                const itemId = card.dataset.id;
+                if (matchHeatmaps[itemId]) {{
+                    const overlay = block.querySelector('.heatmap-overlay');
+                    if (overlay) overlay.src = matchHeatmaps[itemId];
+                    block.classList.remove('loading','error');
+                }} else {{
+                    block.classList.add('loading');
+                    block.classList.remove('error');
+                }}
+            }});
+
+            let done = 0;
+            for (const card of cards) {{
+                if (!heatmapsVisible) break;
+                const itemId = card.dataset.id;
+                const block = card.querySelector('.heatmap-block');
+                const matchOriginal = card.querySelector('.match-original');
+                const imagePath = matchOriginal ? matchOriginal.getAttribute('src') : null;
+
+                toggleBtn.innerHTML = '&#9203; Loading heatmaps... (' + (done + 1) + '/' + cards.length + ')';
+
+                if (matchHeatmaps[itemId]) {{ done++; continue; }}
+                if (!imagePath || !block) {{ done++; continue; }}
+                try {{
+                    await generateHeatmapForMatch(itemId, imagePath);
+                    block.classList.remove('loading','error');
+                }} catch (err) {{
+                    block.classList.remove('loading');
+                    block.classList.add('error');
+                }}
+                done++;
+            }}
+
+            if (heatmapsVisible) {{
+                toggleBtn.innerHTML = '&#128293; Hide similarity heatmaps';
             }}
         }}
 
