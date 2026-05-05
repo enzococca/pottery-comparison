@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Compute visual embeddings for all ceramic images in the database.
-Uses ResNet18 to extract feature vectors for similarity search.
+Compute visual embeddings for all ceramic images in the database using the
+fine-tuned v2 classifier as the feature extractor. Penultimate layer is
+256-dimensional and decoration/period/vessel-aware (the classifier was
+trained to predict those targets), so cosine similarity in this space is
+much more discriminating than ImageNet ResNet18 features.
 """
 
 import os
@@ -13,7 +16,7 @@ from pathlib import Path
 from datetime import datetime
 
 print("=" * 60)
-print("    COMPUTING IMAGE EMBEDDINGS FOR SIMILARITY SEARCH")
+print("    COMPUTING IMAGE EMBEDDINGS (v2 classifier features)")
 print("=" * 60)
 
 try:
@@ -36,24 +39,50 @@ DB_PATH = "ceramica.db"
 OUTPUT_DIR = "ml_model"
 EMBEDDINGS_FILE = os.path.join(OUTPUT_DIR, "image_embeddings.npz")
 METADATA_FILE = os.path.join(OUTPUT_DIR, "embeddings_metadata.json")
+CLASSIFIER_V2_PATH = os.path.join(OUTPUT_DIR, "ceramic_classifier_v2.pt")
+ENCODERS_V2_PATH = os.path.join(OUTPUT_DIR, "label_encoders_v2.json")
 
 # Device
 device = torch.device("mps" if torch.backends.mps.is_available() else
                       "cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
 
-# Create feature extractor (ResNet18 without final classification layer)
-class FeatureExtractor(nn.Module):
-    def __init__(self):
+
+class CeramicClassifierV2(nn.Module):
+    """Same architecture as viewer_app.load_ml_model but here we expose the
+    `shared` 256-dim layer so we can use it as an embedding."""
+    def __init__(self, n_period, n_decoration, n_vessel, dropout=0.4):
         super().__init__()
-        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        # Remove the final FC layer - output is 512-dimensional
-        self.features = nn.Sequential(*list(resnet.children())[:-1])
+        self.backbone = models.resnet50(weights=None)
+        n_features = self.backbone.fc.in_features  # 2048
+        self.backbone.fc = nn.Identity()
+
+        self.shared = nn.Sequential(
+            nn.Linear(n_features, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+        self.period_head = nn.Sequential(
+            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_period)
+        )
+        self.decoration_head = nn.Sequential(
+            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_decoration)
+        )
+        self.vessel_head = nn.Sequential(
+            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_vessel)
+        )
+
+    def embed(self, x):
+        return self.shared(self.backbone(x))
 
     def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)  # Flatten to (batch, 512)
-        return x
+        shared = self.embed(x)
+        return self.period_head(shared), self.decoration_head(shared), self.vessel_head(shared)
 
 # Image transform
 transform = transforms.Compose([
@@ -101,25 +130,32 @@ def load_image(image_path):
         return None
 
 def main():
-    # Load model
-    print("\n[1/4] Loading feature extractor model...")
-    model = FeatureExtractor().to(device)
+    # Load fine-tuned v2 classifier and use its shared (penultimate) layer
+    print("\n[1/4] Loading v2 classifier as feature extractor...")
+    checkpoint = torch.load(CLASSIFIER_V2_PATH, map_location=device, weights_only=True)
+    model = CeramicClassifierV2(
+        checkpoint['n_period'],
+        checkpoint['n_decoration'],
+        checkpoint['n_vessel'],
+    ).to(device)
+    model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    print(f"   Model loaded (output: 512-dimensional vectors)")
+    print(f"   Model loaded (embedding dim: 256, decoration/period/vessel-aware)")
 
     # Load data from database
     print("\n[2/4] Loading items from database...")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Restrict the similarity-search corpus to items that are not explicitly
-    # plain. Plain pieces dragged the embedding space toward shape similarity
-    # and made decoration-driven queries return non-decorated matches.
+    # Strict filter: keep only items whose decoration is explicitly known and
+    # not 'plain'. Pieces with NULL or empty decoration are excluded too —
+    # the user wants a strictly decorated corpus for similarity search.
     cursor.execute("""
         SELECT id, image_path, macro_period, period, decoration,
                vessel_type, collection, page_ref, source_pdf
         FROM items
         WHERE image_path IS NOT NULL AND image_path != ''
-          AND (decoration IS NULL OR LOWER(decoration) != 'plain')
+          AND decoration IS NOT NULL AND TRIM(decoration) != ''
+          AND LOWER(TRIM(decoration)) != 'plain'
     """)
     items = cursor.fetchall()
     conn.close()
@@ -145,9 +181,9 @@ def main():
             if img_tensor is None:
                 continue
 
-            # Extract embedding
+            # Extract embedding from the v2 classifier's shared (penultimate) layer
             img_tensor = img_tensor.unsqueeze(0).to(device)
-            embedding = model(img_tensor).cpu().numpy().flatten()
+            embedding = model.embed(img_tensor).cpu().numpy().flatten()
 
             # Normalize embedding for cosine similarity
             embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
@@ -185,8 +221,8 @@ def main():
         json.dump({
             'created': datetime.now().isoformat(),
             'total_images': valid_count,
-            'embedding_dim': 512,
-            'model': 'ResNet18',
+            'embedding_dim': 256,
+            'model': 'CeramicClassifierV2.shared',
             'items': metadata
         }, f, indent=2)
     print(f"   Metadata saved: {METADATA_FILE}")
@@ -196,7 +232,7 @@ def main():
     print("   EMBEDDING COMPUTATION COMPLETE")
     print("=" * 60)
     print(f"\n   Total images: {valid_count}")
-    print(f"   Embedding dimension: 512")
+    print(f"   Embedding dimension: {embeddings_array.shape[1]}")
     print(f"   Storage: {os.path.getsize(EMBEDDINGS_FILE) / 1024 / 1024:.2f} MB")
 
     # Distribution by collection

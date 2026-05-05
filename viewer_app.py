@@ -93,10 +93,10 @@ ML_MODEL = None
 ML_ENCODERS = None
 ML_TRANSFORM = None
 
-# Image Similarity Search
+# Image Similarity Search (uses ML_MODEL — the v2 classifier — as embedding
+# extractor; no separate ResNet18 ImageNet model is needed any more).
 EMBEDDINGS = None
 EMBEDDINGS_METADATA = None
-FEATURE_EXTRACTOR = None
 ML_DISABLED = False  # Set to True if ML fails to load (memory issues)
 
 # Configuration
@@ -673,83 +673,21 @@ def generate_explanations(period, period_conf, decoration, decoration_conf, vess
     return explanations
 
 
-def explain_similarity(img1_path, img2_data, similarity_score):
-    """Explain why two images are similar"""
-    try:
-        import torch
-        from PIL import Image
-        import numpy as np
-
-        if not load_embeddings():
-            return {'error': 'Embeddings not available'}
-
-        # Load both images
-        img1 = Image.open(img1_path).convert('RGB')
-
-        if ',' in img2_data:
-            img2_data = img2_data.split(',')[1]
-        img2_bytes = base64.b64decode(img2_data)
-        img2 = Image.open(io.BytesIO(img2_bytes)).convert('RGB')
-
-        # Get features for comparison
-        transform = ML_TRANSFORM
-
-        with torch.no_grad():
-            feat1 = FEATURE_EXTRACTOR(transform(img1).unsqueeze(0)).squeeze().numpy()
-            feat2 = FEATURE_EXTRACTOR(transform(img2).unsqueeze(0)).squeeze().numpy()
-
-        # Find which feature dimensions contribute most to similarity
-        # Cosine similarity breakdown
-        feat1_norm = feat1 / (np.linalg.norm(feat1) + 1e-8)
-        feat2_norm = feat2 / (np.linalg.norm(feat2) + 1e-8)
-
-        contributions = feat1_norm * feat2_norm
-        top_features = np.argsort(contributions)[-10:]  # Top 10 contributing features
-
-        # Map features to semantic meaning (simplified)
-        # In a real scenario, you'd analyze what each feature dimension represents
-        similarity_aspects = []
-
-        if similarity_score > 0.8:
-            similarity_aspects.append("Decorazione molto simile con pattern quasi identici")
-            similarity_aspects.append("Stessa tecnica decorativa")
-        elif similarity_score > 0.6:
-            similarity_aspects.append("Pattern decorativi correlati")
-            similarity_aspects.append("Stile artistico simile")
-        elif similarity_score > 0.4:
-            similarity_aspects.append("Alcune caratteristiche decorative in comune")
-            similarity_aspects.append("Possibile stessa tradizione ceramica")
-        else:
-            similarity_aspects.append("Somiglianza limitata, principalmente nella texture")
-
-        # Feature analysis
-        high_freq_features = np.sum(np.abs(feat1 - feat2) < 0.1) / len(feat1)
-        if high_freq_features > 0.7:
-            similarity_aspects.append("Texture della superficie molto simile")
-        if high_freq_features > 0.5:
-            similarity_aspects.append("Composizione generale comparabile")
-
-        return {
-            'success': True,
-            'similarity_score': similarity_score,
-            'aspects': similarity_aspects,
-            'explanation': f"Similarità del {similarity_score*100:.1f}%: " + "; ".join(similarity_aspects[:3])
-        }
-
-    except Exception as e:
-        return {'error': str(e)}
-
-
 def load_embeddings():
-    """Load pre-computed image embeddings for similarity search."""
-    global EMBEDDINGS, EMBEDDINGS_METADATA, FEATURE_EXTRACTOR, ML_DISABLED
+    """Load pre-computed image embeddings for similarity search.
+
+    Embeddings are produced by compute_embeddings.py from the v2 classifier's
+    `shared` (penultimate) layer (256-dim, decoration/period/vessel-aware).
+    Query-time embedding extraction reuses ML_MODEL via load_ml_model() so we
+    don't carry a second ImageNet ResNet18 just for similarity.
+    """
+    global EMBEDDINGS, EMBEDDINGS_METADATA, ML_DISABLED
 
     if EMBEDDINGS is not None:
         return True
 
     embeddings_path = ML_MODEL_DIR / "image_embeddings.npz"
     metadata_path = ML_MODEL_DIR / "embeddings_metadata.json"
-    feature_extractor_path = ML_MODEL_DIR / "feature_extractor.pt"
 
     if not embeddings_path.exists() or not metadata_path.exists():
         print("Embeddings not found. Run compute_embeddings.py first.")
@@ -757,62 +695,26 @@ def load_embeddings():
 
     try:
         import gc
-        gc.collect()  # Clean up memory before loading
-
+        gc.collect()
         import torch
-        import torch.nn as nn
-        from torchvision import models
+        torch.set_num_threads(1)
 
-        # Set memory-efficient options
-        torch.set_num_threads(1)  # Limit CPU threads
-
-        # Load embeddings
         print("   Loading embeddings from disk...")
         data = np.load(embeddings_path)
         EMBEDDINGS = data['embeddings']
-        print(f"   Loaded {len(EMBEDDINGS)} embeddings")
+        print(f"   Loaded {len(EMBEDDINGS)} embeddings (dim={EMBEDDINGS.shape[1]})")
 
-        # Load metadata
         with open(metadata_path) as f:
             EMBEDDINGS_METADATA = json.load(f)
 
-        # Create feature extractor for new images
-        class FeatureExtractor(nn.Module):
-            def __init__(self):
-                super().__init__()
-                resnet = models.resnet18(weights=None)
-                self.features = nn.Sequential(*list(resnet.children())[:-1])
+        if not load_ml_model():
+            print("   v2 classifier not available; similarity search disabled")
+            ML_DISABLED = True
+            return False
 
-            def forward(self, x):
-                x = self.features(x)
-                return x.view(x.size(0), -1)
-
-        print("   Creating feature extractor...")
-        FEATURE_EXTRACTOR = FeatureExtractor()
-
-        # Try to load cached weights first, then download if needed
-        if feature_extractor_path.exists():
-            print("   Loading cached feature extractor weights...")
-            FEATURE_EXTRACTOR.load_state_dict(torch.load(feature_extractor_path, map_location='cpu', weights_only=True))
-        else:
-            print("   Downloading ResNet18 weights (first time only)...")
-            try:
-                resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-                FEATURE_EXTRACTOR.features.load_state_dict(
-                    nn.Sequential(*list(resnet.children())[:-1]).state_dict()
-                )
-                # Cache weights for future use
-                torch.save(FEATURE_EXTRACTOR.state_dict(), feature_extractor_path)
-                print(f"   Cached weights to {feature_extractor_path}")
-                del resnet  # Free memory
-            except Exception as download_err:
-                print(f"   Warning: Could not download weights: {download_err}")
-                print("   Similarity search will use random weights (less accurate)")
-
-        FEATURE_EXTRACTOR.eval()
-        gc.collect()  # Clean up after loading
-
-        print(f"   Similarity search ready with {len(EMBEDDINGS)} images")
+        gc.collect()
+        print(f"   Similarity search ready with {len(EMBEDDINGS)} images "
+              f"(features: v2 classifier shared layer)")
         return True
 
     except MemoryError as e:
@@ -859,16 +761,15 @@ def _content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio
 
 def find_similar_images(image_data, top_k=20, threshold=0.5):
     """Find visually similar images using cosine similarity."""
-    global ML_DISABLED
+    global ML_DISABLED, ML_MODEL
     if ML_DISABLED:
         return {'error': 'ML features are disabled due to memory constraints. Please try again later or use a server with more memory.'}
 
-    if not load_embeddings():
+    if not load_embeddings() or ML_MODEL is None:
         return {'error': 'Embeddings not available'}
 
     try:
         import torch
-        from torchvision import transforms
         from PIL import Image
 
         # Decode image
@@ -879,18 +780,13 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         img = _content_bbox_crop(img)
 
-        # Transform
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ])
+        img_tensor = ML_TRANSFORM(img).unsqueeze(0)
 
-        img_tensor = transform(img).unsqueeze(0)
-
-        # Extract embedding
+        # Extract embedding from the v2 classifier's shared layer (matches the
+        # corpus embedding pipeline in compute_embeddings.py).
         with torch.no_grad():
-            query_embedding = FEATURE_EXTRACTOR(img_tensor).numpy().flatten()
+            features = ML_MODEL.backbone(img_tensor)
+            query_embedding = ML_MODEL.shared(features).numpy().flatten()
             query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
 
         # Compute cosine similarities
@@ -964,19 +860,19 @@ def similarity_heatmap(query_image_data, match_image_path):
     """Generate Grad-CAM heatmap on the QUERY image showing what regions
     drive the cosine similarity with the given match (Issue A).
 
-    Reuses the global FEATURE_EXTRACTOR (no fresh ResNet18 per call) so
-    memory stays bounded, and serializes calls with a lock since hooks
-    mutate shared state.
+    Hooks ML_MODEL.backbone.layer4 (the last conv block of the v2
+    classifier's ResNet50). Same model produces both the query embedding
+    and the heatmap, so the explanation matches what the similarity ranking
+    actually sees.
     """
-    global ML_DISABLED, FEATURE_EXTRACTOR
-    if ML_DISABLED or FEATURE_EXTRACTOR is None:
+    global ML_DISABLED, ML_MODEL
+    if ML_DISABLED or ML_MODEL is None:
         return {'error': 'ML features are disabled'}
-    if not load_embeddings():
+    if not load_embeddings() or ML_MODEL is None:
         return {'error': 'Embeddings not available'}
 
     try:
         import torch
-        from torchvision import transforms
         from PIL import Image
         import cv2
 
@@ -996,19 +892,11 @@ def similarity_heatmap(query_image_data, match_image_path):
         match_img = Image.open(match_path).convert('RGB')
         match_img = _content_bbox_crop(match_img)
 
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ])
+        def embed(t):
+            return ML_MODEL.shared(ML_MODEL.backbone(t))
 
         with _SIMILARITY_HEATMAP_LOCK:
-            # FeatureExtractor wraps `nn.Sequential` of resnet18 layers (minus
-            # FC). Inside that Sequential the layers are ordered:
-            #   0:conv1 1:bn1 2:relu 3:maxpool 4:layer1 5:layer2 6:layer3
-            #   7:layer4 8:avgpool
-            # Hook layer4 (index 7) for Grad-CAM.
-            target_layer = FEATURE_EXTRACTOR.features[7]
+            target_layer = ML_MODEL.backbone.layer4
 
             activations = []
             gradients = []
@@ -1023,25 +911,24 @@ def similarity_heatmap(query_image_data, match_image_path):
             h_bwd = target_layer.register_full_backward_hook(bwd_hook)
             try:
                 with torch.no_grad():
-                    m_emb = FEATURE_EXTRACTOR(transform(match_img).unsqueeze(0))
+                    m_emb = embed(ML_TRANSFORM(match_img).unsqueeze(0))
                     m_emb = m_emb / (m_emb.norm() + 1e-8)
-                # The no_grad pass populated the hook lists with match data —
-                # discard before we run the query so the gradient backward
-                # sees only the query activations.
+                # Discard activations from the match pass before running the
+                # query (the hook fired during the no_grad forward too).
                 activations.clear()
                 gradients.clear()
 
-                q_t = transform(query_img).unsqueeze(0)
+                q_t = ML_TRANSFORM(query_img).unsqueeze(0)
                 q_t.requires_grad_(True)
-                q_emb = FEATURE_EXTRACTOR(q_t)
+                q_emb = embed(q_t)
                 q_emb = q_emb / (q_emb.norm() + 1e-8)
                 sim = (q_emb * m_emb.detach()).sum()
 
-                FEATURE_EXTRACTOR.zero_grad()
+                ML_MODEL.zero_grad()
                 sim.backward()
 
-                grads = gradients[0].detach().cpu().numpy()[0]   # (512, 7, 7)
-                acts = activations[0].detach().cpu().numpy()[0]  # (512, 7, 7)
+                grads = gradients[0].detach().cpu().numpy()[0]   # (2048, 7, 7)
+                acts = activations[0].detach().cpu().numpy()[0]  # (2048, 7, 7)
             finally:
                 h_fwd.remove()
                 h_bwd.remove()
