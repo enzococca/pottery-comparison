@@ -828,6 +828,34 @@ def load_embeddings():
         return False
 
 
+def _content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=0.02):
+    """Crop a PIL image to its non-white content bbox.
+
+    Mirrors compute_embeddings.content_bbox_crop so query and corpus are
+    preprocessed symmetrically (Issue B in similarity search).
+    """
+    from PIL import Image as _PILImage  # local import; PIL imported in callers
+    arr = np.asarray(img.convert('L'))
+    h, w = arr.shape
+    mask = arr < white_thresh
+    if not mask.any():
+        return img
+    ys, xs = np.where(mask)
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    bbox_w = x1 - x0
+    bbox_h = y1 - y0
+    if bbox_w * bbox_h < min_area_ratio * w * h:
+        return img
+    pad_x = int(bbox_w * padding_ratio)
+    pad_y = int(bbox_h * padding_ratio)
+    x0 = max(0, x0 - pad_x)
+    y0 = max(0, y0 - pad_y)
+    x1 = min(w - 1, x1 + pad_x)
+    y1 = min(h - 1, y1 + pad_y)
+    return img.crop((x0, y0, x1 + 1, y1 + 1))
+
+
 def find_similar_images(image_data, top_k=20, threshold=0.5):
     """Find visually similar images using cosine similarity."""
     global ML_DISABLED
@@ -848,6 +876,7 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
 
         image_bytes = base64.b64decode(image_data)
         img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        img = _content_bbox_crop(img)
 
         # Transform
         transform = transforms.Compose([
@@ -869,24 +898,40 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         # Get top matches
         top_indices = np.argsort(similarities)[::-1][:top_k]
 
-        # Build results
+        def _build_item(idx, sim_score):
+            item_meta = EMBEDDINGS_METADATA['items'][idx]
+            return {
+                'id': item_meta['id'],
+                'image_path': item_meta['image_path'],
+                'macro_period': item_meta['macro_period'],
+                'period': item_meta['period'],
+                'decoration': item_meta['decoration'],
+                'vessel_type': item_meta['vessel_type'],
+                'collection': item_meta['collection'],
+                'page_ref': item_meta['page_ref'],
+                'source_pdf': item_meta['source_pdf'],
+                'similarity': round(sim_score * 100, 1),
+            }
+
+        # Build results above threshold
         similar_items = []
         for idx in top_indices:
             sim_score = float(similarities[idx])
             if sim_score >= threshold:
-                item_meta = EMBEDDINGS_METADATA['items'][idx]
-                similar_items.append({
-                    'id': item_meta['id'],
-                    'image_path': item_meta['image_path'],
-                    'macro_period': item_meta['macro_period'],
-                    'period': item_meta['period'],
-                    'decoration': item_meta['decoration'],
-                    'vessel_type': item_meta['vessel_type'],
-                    'collection': item_meta['collection'],
-                    'page_ref': item_meta['page_ref'],
-                    'source_pdf': item_meta['source_pdf'],
-                    'similarity': round(sim_score * 100, 1)
-                })
+                similar_items.append(_build_item(idx, sim_score))
+
+        # Fallback (Issue C): if nothing passes threshold, return top 5 anyway
+        below_threshold_fallback = False
+        if not similar_items:
+            fallback_n = min(5, len(top_indices))
+            for idx in top_indices[:fallback_n]:
+                sim_score = float(similarities[idx])
+                item = _build_item(idx, sim_score)
+                item['below_threshold'] = True
+                similar_items.append(item)
+            below_threshold_fallback = True
+
+        max_similarity = round(float(similarities[top_indices[0]]) * 100, 1) if len(top_indices) else 0.0
 
         # Generate analysis
         analysis = generate_similarity_analysis(similar_items)
@@ -896,7 +941,10 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
             'similar_items': similar_items,
             'total_compared': len(EMBEDDINGS),
             'analysis': analysis,
-            'statistics': compute_similarity_statistics(similar_items)
+            'statistics': compute_similarity_statistics(similar_items),
+            'below_threshold_fallback': below_threshold_fallback,
+            'max_similarity': max_similarity,
+            'threshold_pct': round(threshold * 100, 1),
         }
 
     except Exception as e:
@@ -905,8 +953,158 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         return {'error': str(e)}
 
 
+def similarity_heatmap(query_image_data, match_image_path):
+    """Generate Grad-CAM heatmap on the QUERY image showing what regions
+    drive the cosine similarity with the given match (Issue A).
+
+    The previous "match heatmap" actually used the classifier's Grad-CAM,
+    which explained classification rather than similarity. This computes
+    gradients of cosine(query_emb, match_emb) wrt the query's last conv
+    activations, so the heatmap is faithful to similarity.
+    """
+    global ML_DISABLED
+    if ML_DISABLED:
+        return {'error': 'ML features are disabled'}
+
+    try:
+        import torch
+        import torch.nn as nn
+        from torchvision import transforms, models
+        from PIL import Image
+        import cv2
+
+        # Decode query
+        if ',' in query_image_data:
+            query_image_data = query_image_data.split(',')[1]
+        q_bytes = base64.b64decode(query_image_data)
+        query_img = Image.open(io.BytesIO(q_bytes)).convert('RGB')
+        query_img = _content_bbox_crop(query_img)
+
+        # Load match image (resolve relative paths from project root)
+        match_path = match_image_path
+        if not Path(match_path).is_absolute() and not Path(match_path).exists():
+            alt = Path(__file__).parent / match_path
+            if alt.exists():
+                match_path = str(alt)
+        match_img = Image.open(match_path).convert('RGB')
+        match_img = _content_bbox_crop(match_img)
+
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
+
+        # Build a fresh ResNet18 (CPU; ~45MB) and put it in eval
+        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        resnet.eval()
+
+        activations = []
+        gradients = []
+
+        def fwd_hook(_m, _i, out):
+            activations.append(out)
+
+        def bwd_hook(_m, _gi, go):
+            gradients.append(go[0])
+
+        h_fwd = resnet.layer4.register_forward_hook(fwd_hook)
+        h_bwd = resnet.layer4.register_full_backward_hook(bwd_hook)
+
+        def forward_emb(x):
+            # ResNet18 forward without the final fc
+            x = resnet.conv1(x)
+            x = resnet.bn1(x)
+            x = resnet.relu(x)
+            x = resnet.maxpool(x)
+            x = resnet.layer1(x)
+            x = resnet.layer2(x)
+            x = resnet.layer3(x)
+            x = resnet.layer4(x)
+            x = resnet.avgpool(x)
+            return x.view(x.size(0), -1)
+
+        q_t = transform(query_img).unsqueeze(0)
+        q_t.requires_grad_(True)
+        m_t = transform(match_img).unsqueeze(0)
+
+        with torch.no_grad():
+            m_emb = forward_emb(m_t)
+            m_emb = m_emb / (m_emb.norm() + 1e-8)
+        # forward_emb registered both query forward activations on layer4 hook;
+        # but the no_grad call above also triggers the hook — clear it.
+        activations.clear()
+
+        q_emb = forward_emb(q_t)
+        q_emb = q_emb / (q_emb.norm() + 1e-8)
+        sim = (q_emb * m_emb.detach()).sum()
+
+        resnet.zero_grad()
+        sim.backward()
+
+        h_fwd.remove()
+        h_bwd.remove()
+
+        grads = gradients[0].detach().cpu().numpy()[0]   # (512, 7, 7)
+        acts = activations[0].detach().cpu().numpy()[0]  # (512, 7, 7)
+        weights = grads.mean(axis=(1, 2))
+        cam = np.zeros(acts.shape[1:], dtype=np.float32)
+        for i, w in enumerate(weights):
+            cam += float(w) * acts[i]
+        cam = np.maximum(cam, 0)
+        # Resize to query (cropped) size
+        q_arr = np.array(query_img)
+        cam = cv2.resize(cam, (q_arr.shape[1], q_arr.shape[0]))
+        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+
+        heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+        overlay = (0.45 * heatmap + 0.55 * q_arr).astype(np.uint8)
+
+        out_pil = Image.fromarray(overlay)
+        buf = io.BytesIO()
+        out_pil.save(buf, format='PNG')
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        return {
+            'success': True,
+            'heatmap': f'data:image/png;base64,{b64}',
+            'similarity': round(float(sim.detach()) * 100, 1),
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
+def _corpus_period_prevalence():
+    """Return dict {macro_period: fraction} computed from the loaded embeddings
+    metadata. Used to debias the period suggestion (Issue: corpus dominated by
+    Umm an-Nar pushed every query toward 100% Umm an-Nar)."""
+    if not EMBEDDINGS_METADATA or 'items' not in EMBEDDINGS_METADATA:
+        return {}
+    counts = {}
+    total = 0
+    for it in EMBEDDINGS_METADATA['items']:
+        mp = it.get('macro_period') or ''
+        if not mp:
+            continue
+        counts[mp] = counts.get(mp, 0) + 1
+        total += 1
+    if total == 0:
+        return {}
+    return {p: c / total for p, c in counts.items()}
+
+
 def generate_similarity_analysis(similar_items):
-    """Generate a descriptive archaeological analysis based on similar items found."""
+    """Generate a descriptive archaeological analysis based on similar items found.
+
+    The period suggestion is debiased against corpus prevalence: each match's
+    vote is weighted by its similarity AND by the inverse of how common its
+    period is in the corpus. This prevents the Schmidt-dominated corpus (~73%
+    Umm an-Nar) from forcing every query to look like Umm an-Nar.
+    """
     if not similar_items:
         return {
             'text': "No similar ceramics were found in the database with sufficient visual similarity.",
@@ -914,52 +1112,79 @@ def generate_similarity_analysis(similar_items):
             'references': []
         }
 
-    # Analyze period distribution
-    periods = {}
+    prevalence = _corpus_period_prevalence()
+    BASELINE_FLOOR = 0.05  # avoid division by zero / extreme weights for tiny classes
+
+    period_scores = {}      # debiased votes
+    period_raw_counts = {}  # raw counts (for reporting)
     decorations = {}
     collections = {}
     references = []
 
-    for item in similar_items[:10]:  # Use top 10 for analysis
-        if item['macro_period']:
-            periods[item['macro_period']] = periods.get(item['macro_period'], 0) + 1
-        if item['decoration']:
+    top10 = similar_items[:10]
+    for item in top10:
+        sim = float(item.get('similarity', 0)) / 100.0
+        mp = item.get('macro_period') or ''
+        if mp:
+            period_raw_counts[mp] = period_raw_counts.get(mp, 0) + 1
+            inv_prev = 1.0 / max(prevalence.get(mp, BASELINE_FLOOR), BASELINE_FLOOR)
+            period_scores[mp] = period_scores.get(mp, 0.0) + sim * inv_prev
+        if item.get('decoration'):
             decorations[item['decoration']] = decorations.get(item['decoration'], 0) + 1
-        if item['collection']:
+        if item.get('collection'):
             collections[item['collection']] = collections.get(item['collection'], 0) + 1
 
-        # Build references
-        if item['page_ref'] and item['source_pdf']:
+        if item.get('page_ref') and item.get('source_pdf'):
             ref = {
                 'id': item['id'],
                 'collection': item['collection'],
                 'page_ref': item['page_ref'],
-                'source_pdf': item['source_pdf']
+                'source_pdf': item['source_pdf'],
             }
             if ref not in references:
                 references.append(ref)
 
-    # Determine most likely period
-    suggested_period = max(periods.items(), key=lambda x: x[1])[0] if periods else None
-    period_confidence = (periods.get(suggested_period, 0) / len(similar_items[:10]) * 100) if suggested_period else 0
+    # Suggested period from debiased scores; confidence = share of total mass.
+    suggested_period = None
+    period_confidence = 0.0
+    if period_scores:
+        total_mass = sum(period_scores.values())
+        suggested_period, top_score = max(period_scores.items(), key=lambda kv: kv[1])
+        period_confidence = (top_score / total_mass * 100.0) if total_mass > 0 else 0.0
 
-    # Determine decoration type
+    # Detect dominant-corpus bias to surface a disclaimer
+    dominant_corpus_period = None
+    for p, frac in prevalence.items():
+        if frac >= 0.50:
+            dominant_corpus_period = (p, frac)
+            break
+
     suggested_decoration = max(decorations.items(), key=lambda x: x[1])[0] if decorations else None
 
-    # Build sites mentioned
     sites_by_collection = {
         'Degli_Espositi': 'Hili (UAE)',
         'Righetti': 'Hili 8 (UAE)',
-        'Pellegrino': 'Masafi, Dibba, Tell Abraq (UAE/Oman)'
+        'Pellegrino': 'Masafi, Dibba, Tell Abraq (UAE/Oman)',
+        'Schmidt_Bat': 'Bat (Oman)',
     }
-
     sites = [sites_by_collection.get(col, col) for col in collections.keys()]
 
-    # Generate text
     text_parts = []
 
     if suggested_period:
-        text_parts.append(f"Based on visual similarity analysis, this ceramic fragment most likely dates to the **{suggested_period}** period ({period_confidence:.0f}% confidence based on top matches).")
+        raw_share = (period_raw_counts.get(suggested_period, 0) / len(top10) * 100.0) if top10 else 0.0
+        text_parts.append(
+            f"Based on visual similarity analysis (weighted against corpus prevalence), "
+            f"this ceramic fragment most plausibly dates to the **{suggested_period}** period "
+            f"({period_confidence:.0f}% relative confidence; {raw_share:.0f}% of top-10 raw matches)."
+        )
+
+    if dominant_corpus_period and suggested_period == dominant_corpus_period[0]:
+        text_parts.append(
+            f"⚠️ Note: the reference corpus is heavily skewed toward "
+            f"**{dominant_corpus_period[0]}** ({dominant_corpus_period[1]*100:.0f}% of items), "
+            f"so this period attribution should be treated as tentative and verified manually."
+        )
 
     if suggested_decoration:
         text_parts.append(f"The decoration style appears to be **{suggested_decoration}**.")
@@ -969,18 +1194,25 @@ def generate_similarity_analysis(similar_items):
 
     if similar_items:
         top_match = similar_items[0]
-        text_parts.append(f"The closest visual match ({top_match['similarity']}% similarity) is **{top_match['id']}** from the {top_match['collection']} collection.")
+        text_parts.append(
+            f"The closest visual match ({top_match['similarity']}% similarity) is "
+            f"**{top_match['id']}** from the {top_match['collection']} collection."
+        )
 
     if references:
-        text_parts.append(f"For bibliographic references, see the linked PDF documents below.")
+        text_parts.append("For bibliographic references, see the linked PDF documents below.")
 
     return {
         'text': ' '.join(text_parts),
         'period_suggestion': suggested_period,
         'period_confidence': period_confidence,
+        'period_raw_counts': period_raw_counts,
+        'period_debiased_scores': {p: round(s, 3) for p, s in period_scores.items()},
+        'corpus_prevalence': {p: round(v, 3) for p, v in prevalence.items()},
+        'corpus_dominant': dominant_corpus_period[0] if dominant_corpus_period else None,
         'decoration_suggestion': suggested_decoration,
         'sites': sites,
-        'references': references[:5]  # Top 5 references
+        'references': references[:5]
     }
 
 
@@ -2113,6 +2345,22 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 import traceback
                 traceback.print_exc()
                 self.send_json({'error': f'Similarity search failed: {str(e)}', 'similar_items': []}, 500)
+            return
+
+        # ML Similarity Heatmap endpoint (Issue A: faithful Grad-CAM on cosine score)
+        if parsed.path == '/api/ml/similarity-heatmap':
+            try:
+                query = post_data.get('query_image')
+                match_path = post_data.get('match_image_path')
+                if not query or not match_path:
+                    self.send_json({'error': 'query_image and match_image_path required'}, 400)
+                    return
+                result = similarity_heatmap(query, match_path)
+                self.send_json(result)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.send_json({'error': f'Heatmap generation failed: {str(e)}'}, 500)
             return
 
         # Get all images for carousel animation
@@ -3437,6 +3685,7 @@ def get_viewer_html(role):
             transition: all 0.2s;
         }}
         .ml-match-card:hover {{ background: rgba(255,255,255,0.15); transform: translateY(-3px); }}
+        .ml-match-card.below-threshold {{ opacity: 0.65; border: 1px dashed #b8860b; }}
         .ml-match-card img {{
             width: 100%;
             height: 120px;
@@ -4609,7 +4858,7 @@ def get_viewer_html(role):
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
                     <h3 style="margin: 0;">&#128270; Visually Similar Ceramics <span id="mlMatchCount">(0)</span></h3>
                     <button class="heatmap-toggle-btn" id="heatmapToggleBtn" onclick="toggleHeatmaps()" style="display: none;">
-                        &#128293; Show Heatmaps
+                        &#128293; Show similarity heatmaps
                     </button>
                 </div>
                 <p style="color: #888; font-size: 0.85em; margin-bottom: 15px;">
@@ -6036,7 +6285,7 @@ def get_viewer_html(role):
                 displayStatistics(result.statistics || {{}}, result.similar_items || []);
 
                 // Display matches
-                displaySimilarMatches(result.similar_items || []);
+                displaySimilarMatches(result.similar_items || [], result);
 
             }} catch (err) {{
                 alert('Error: ' + err.message);
@@ -6332,7 +6581,7 @@ def get_viewer_html(role):
         let heatmapsVisible = false;
         let matchHeatmaps = {{}};
 
-        function displaySimilarMatches(items) {{
+        function displaySimilarMatches(items, result) {{
             const grid = document.getElementById('mlMatchesGrid');
             const toggleBtn = document.getElementById('heatmapToggleBtn');
             document.getElementById('mlMatchCount').textContent = '(' + items.length + ')';
@@ -6346,11 +6595,18 @@ def get_viewer_html(role):
             // Show heatmap toggle button
             toggleBtn.style.display = 'inline-block';
             heatmapsVisible = false;
-            toggleBtn.innerHTML = '&#128293; Show Heatmaps';
+            toggleBtn.innerHTML = '&#128293; Show similarity heatmaps';
             toggleBtn.classList.remove('active');
 
-            grid.innerHTML = items.map(item => `
-                <div class="ml-match-card" data-id="${{item.id}}" onclick="selectMlMatch('${{item.id}}')">
+            // Below-threshold banner (Issue C)
+            const fallbackBanner = (result && result.below_threshold_fallback)
+                ? `<div style="grid-column: 1/-1; padding: 10px 14px; margin-bottom: 10px; background: #2a1f0a; border: 1px solid #b8860b; border-radius: 6px; color: #f0c040; font-size: 13px;">
+                     &#9888;&#65039; Nessun match sopra la soglia del ${{result.threshold_pct}}%. Mostro i top ${{items.length}} comunque (max similarit&agrave;: ${{result.max_similarity}}%). Abbassa la soglia per vedere pi&ugrave; risultati.
+                   </div>`
+                : '';
+
+            grid.innerHTML = fallbackBanner + items.map(item => `
+                <div class="ml-match-card${{item.below_threshold ? ' below-threshold' : ''}}" data-id="${{item.id}}" onclick="selectMlMatch('${{item.id}}')">
                     <div class="match-img-container" style="position: relative;">
                         <img class="match-original" src="${{item.image_path || ''}}" alt="${{item.id}}"
                              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22120%22><rect fill=%22%23333%22 width=%22150%22 height=%22120%22/><text fill=%22%23666%22 x=%2275%22 y=%2260%22 text-anchor=%22middle%22>No image</text></svg>'">
@@ -6358,7 +6614,7 @@ def get_viewer_html(role):
                     </div>
                     <div class="match-id">${{item.id}}</div>
                     <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
-                    <div class="match-confidence">${{item.similarity}}% similar</div>
+                    <div class="match-confidence">${{item.similarity}}% similar${{item.below_threshold ? ' <span style=&quot;color:#b8860b&quot;>(sotto soglia)</span>' : ''}}</div>
                 </div>
             `).join('');
 
@@ -6373,36 +6629,31 @@ def get_viewer_html(role):
 
         async function generateHeatmapForMatch(itemId, imagePath) {{
             try {{
-                // Fetch the image and convert to base64
-                const response = await fetch(imagePath);
-                const blob = await response.blob();
-                const reader = new FileReader();
+                // Issue A: similarity-faithful heatmap — overlay on the QUERY,
+                // not the match. Shows what region of the user's image drove
+                // the cosine similarity with this match.
+                const queryImage = manualDrawingData || mlImageData;
+                if (!queryImage || !imagePath) return;
 
-                reader.onload = async () => {{
-                    const base64 = reader.result;
-
-                    // Get heatmap from API
-                    const apiResponse = await fetch('/api/ml/explain', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ image: base64 }})
-                    }});
-
-                    const result = await apiResponse.json();
-                    if (result.heatmap) {{
-                        matchHeatmaps[itemId] = result.heatmap;
-
-                        // If heatmaps are visible, update this one
-                        if (heatmapsVisible) {{
-                            const card = document.querySelector(`.ml-match-card[data-id="${{itemId}}"] .heatmap-overlay`);
-                            if (card) {{
-                                card.src = result.heatmap;
-                                card.style.opacity = '0.6';
-                            }}
+                const apiResponse = await fetch('/api/ml/similarity-heatmap', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        query_image: queryImage,
+                        match_image_path: imagePath,
+                    }})
+                }});
+                const result = await apiResponse.json();
+                if (result.heatmap) {{
+                    matchHeatmaps[itemId] = result.heatmap;
+                    if (heatmapsVisible) {{
+                        const card = document.querySelector(`.ml-match-card[data-id="${{itemId}}"] .heatmap-overlay`);
+                        if (card) {{
+                            card.src = result.heatmap;
+                            card.style.opacity = '0.85';
                         }}
                     }}
-                }};
-                reader.readAsDataURL(blob);
+                }}
             }} catch (err) {{
                 console.log('Error generating heatmap for', itemId, err);
             }}
@@ -6413,7 +6664,7 @@ def get_viewer_html(role):
             const toggleBtn = document.getElementById('heatmapToggleBtn');
 
             if (heatmapsVisible) {{
-                toggleBtn.innerHTML = '&#128293; Hide Heatmaps';
+                toggleBtn.innerHTML = '&#128293; Hide similarity heatmaps';
                 toggleBtn.classList.add('active');
 
                 // Show heatmaps
@@ -6426,7 +6677,7 @@ def get_viewer_html(role):
                     }}
                 }});
             }} else {{
-                toggleBtn.innerHTML = '&#128293; Show Heatmaps';
+                toggleBtn.innerHTML = '&#128293; Show similarity heatmaps';
                 toggleBtn.classList.remove('active');
 
                 // Hide heatmaps

@@ -62,10 +62,39 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+
+def content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=0.02):
+    """Crop a PIL image to its non-white content bbox.
+
+    Removes the dominant white background that was biasing the global
+    embedding (Issue B in similarity search).
+    """
+    arr = np.asarray(img.convert('L'))
+    h, w = arr.shape
+    mask = arr < white_thresh
+    if not mask.any():
+        return img
+    ys, xs = np.where(mask)
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    bbox_w = x1 - x0
+    bbox_h = y1 - y0
+    if bbox_w * bbox_h < min_area_ratio * w * h:
+        return img
+    pad_x = int(bbox_w * padding_ratio)
+    pad_y = int(bbox_h * padding_ratio)
+    x0 = max(0, x0 - pad_x)
+    y0 = max(0, y0 - pad_y)
+    x1 = min(w - 1, x1 + pad_x)
+    y1 = min(h - 1, y1 + pad_y)
+    return img.crop((x0, y0, x1 + 1, y1 + 1))
+
+
 def load_image(image_path):
     """Load and transform an image."""
     try:
         img = Image.open(image_path).convert('RGB')
+        img = content_bbox_crop(img)
         return transform(img)
     except Exception as e:
         print(f"   Warning: Could not load {image_path}: {e}")
@@ -82,11 +111,15 @@ def main():
     print("\n[2/4] Loading items from database...")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Restrict the similarity-search corpus to items that are not explicitly
+    # plain. Plain pieces dragged the embedding space toward shape similarity
+    # and made decoration-driven queries return non-decorated matches.
     cursor.execute("""
         SELECT id, image_path, macro_period, period, decoration,
                vessel_type, collection, page_ref, source_pdf
         FROM items
         WHERE image_path IS NOT NULL AND image_path != ''
+          AND (decoration IS NULL OR LOWER(decoration) != 'plain')
     """)
     items = cursor.fetchall()
     conn.close()
