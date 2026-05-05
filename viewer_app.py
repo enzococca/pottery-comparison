@@ -89,12 +89,16 @@ def extract_scale_from_pdf(pdf_path, page_num=None):
 
 
 # ML Model imports (lazy loaded)
-ML_MODEL = None
+ML_MODEL = None       # v2 classifier (used by /api/ml/classify and /api/ml/explain)
 ML_ENCODERS = None
 ML_TRANSFORM = None
 
-# Image Similarity Search (uses ML_MODEL — the v2 classifier — as embedding
-# extractor; no separate ResNet18 ImageNet model is needed any more).
+# Image Similarity Search uses DINOv2-small (Meta self-supervised ViT) loaded
+# lazily on first /api/ml/similar call. CLS token = 384-dim embedding.
+DINOV2_MODEL = None
+DINOV2_PROCESSOR = None
+DINOV2_MODEL_ID = "facebook/dinov2-small"
+
 EMBEDDINGS = None
 EMBEDDINGS_METADATA = None
 ML_DISABLED = False  # Set to True if ML fails to load (memory issues)
@@ -673,13 +677,37 @@ def generate_explanations(period, period_conf, decoration, decoration_conf, vess
     return explanations
 
 
-def load_embeddings():
-    """Load pre-computed image embeddings for similarity search.
+def load_dinov2():
+    """Lazily load DINOv2-small for similarity-search query embedding."""
+    global DINOV2_MODEL, DINOV2_PROCESSOR, ML_DISABLED
+    if DINOV2_MODEL is not None and DINOV2_PROCESSOR is not None:
+        return True
+    try:
+        import gc
+        gc.collect()
+        from transformers import AutoModel, AutoImageProcessor
+        print(f"   Loading {DINOV2_MODEL_ID}...")
+        DINOV2_PROCESSOR = AutoImageProcessor.from_pretrained(DINOV2_MODEL_ID)
+        DINOV2_MODEL = AutoModel.from_pretrained(DINOV2_MODEL_ID)
+        DINOV2_MODEL.eval()
+        gc.collect()
+        print(f"   DINOv2 ready (hidden_size={DINOV2_MODEL.config.hidden_size})")
+        return True
+    except Exception as e:
+        ML_DISABLED = True
+        print(f"Error loading DINOv2: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-    Embeddings are produced by compute_embeddings.py from the v2 classifier's
-    `shared` (penultimate) layer (256-dim, decoration/period/vessel-aware).
-    Query-time embedding extraction reuses ML_MODEL via load_ml_model() so we
-    don't carry a second ImageNet ResNet18 just for similarity.
+
+def load_embeddings():
+    """Load pre-computed DINOv2 image embeddings for similarity search.
+
+    Embeddings are produced by compute_embeddings.py from DINOv2-small's
+    CLS token (384-dim). Query-time embedding extraction goes through
+    load_dinov2(); we no longer touch the v2 classifier here so /api/ml/
+    classify and /api/ml/explain remain independent.
     """
     global EMBEDDINGS, EMBEDDINGS_METADATA, ML_DISABLED
 
@@ -707,14 +735,14 @@ def load_embeddings():
         with open(metadata_path) as f:
             EMBEDDINGS_METADATA = json.load(f)
 
-        if not load_ml_model():
-            print("   v2 classifier not available; similarity search disabled")
+        if not load_dinov2():
+            print("   DINOv2 not available; similarity search disabled")
             ML_DISABLED = True
             return False
 
         gc.collect()
         print(f"   Similarity search ready with {len(EMBEDDINGS)} images "
-              f"(features: v2 classifier shared layer)")
+              f"(features: {DINOV2_MODEL_ID})")
         return True
 
     except MemoryError as e:
@@ -760,12 +788,13 @@ def _content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio
 
 
 def find_similar_images(image_data, top_k=20, threshold=0.5):
-    """Find visually similar images using cosine similarity."""
-    global ML_DISABLED, ML_MODEL
+    """Find visually similar images using cosine similarity over DINOv2-small
+    embeddings (CLS token of facebook/dinov2-small)."""
+    global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
     if ML_DISABLED:
         return {'error': 'ML features are disabled due to memory constraints. Please try again later or use a server with more memory.'}
 
-    if not load_embeddings() or ML_MODEL is None:
+    if not load_embeddings() or DINOV2_MODEL is None:
         return {'error': 'Embeddings not available'}
 
     try:
@@ -780,13 +809,11 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         img = _content_bbox_crop(img)
 
-        img_tensor = ML_TRANSFORM(img).unsqueeze(0)
-
-        # Extract embedding from the v2 classifier's shared layer (matches the
-        # corpus embedding pipeline in compute_embeddings.py).
+        # Extract embedding via DINOv2 (matches the corpus pipeline).
+        inputs = DINOV2_PROCESSOR(images=img, return_tensors='pt')
         with torch.no_grad():
-            features = ML_MODEL.backbone(img_tensor)
-            query_embedding = ML_MODEL.shared(features).numpy().flatten()
+            outputs = DINOV2_MODEL(**inputs)
+            query_embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
             query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
 
         # Compute cosine similarities
@@ -857,18 +884,19 @@ _SIMILARITY_HEATMAP_LOCK = threading.Lock()
 
 
 def similarity_heatmap(query_image_data, match_image_path):
-    """Generate Grad-CAM heatmap on the QUERY image showing what regions
-    drive the cosine similarity with the given match (Issue A).
+    """Generate a saliency heatmap on the QUERY image showing what patches
+    drive the cosine similarity with the given match (Issue A), faithful
+    to the DINOv2 embedding used for ranking.
 
-    Hooks ML_MODEL.backbone.layer4 (the last conv block of the v2
-    classifier's ResNet50). Same model produces both the query embedding
-    and the heatmap, so the explanation matches what the similarity ranking
-    actually sees.
+    Hooks the last transformer block of DINOv2-small. After backward of
+    cosine(query_emb, match_emb), per-patch saliency = sum(activation *
+    gradient) along the embedding dim, reshaped to a 16x16 grid (16 = 224 /
+    patch_size 14) and resized to the query image.
     """
-    global ML_DISABLED, ML_MODEL
-    if ML_DISABLED or ML_MODEL is None:
+    global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
+    if ML_DISABLED:
         return {'error': 'ML features are disabled'}
-    if not load_embeddings() or ML_MODEL is None:
+    if not load_embeddings() or DINOV2_MODEL is None:
         return {'error': 'Embeddings not available'}
 
     try:
@@ -892,55 +920,70 @@ def similarity_heatmap(query_image_data, match_image_path):
         match_img = Image.open(match_path).convert('RGB')
         match_img = _content_bbox_crop(match_img)
 
-        def embed(t):
-            return ML_MODEL.shared(ML_MODEL.backbone(t))
-
         with _SIMILARITY_HEATMAP_LOCK:
-            target_layer = ML_MODEL.backbone.layer4
-
+            # Hook the last transformer block: forward saves the per-token
+            # hidden states, backward saves their gradients.
+            last_block = DINOV2_MODEL.encoder.layer[-1]
             activations = []
             gradients = []
 
             def fwd_hook(_m, _i, out):
-                activations.append(out)
+                # transformers DINOv2 returns a tuple: (hidden_states, ...)
+                activations.append(out[0] if isinstance(out, tuple) else out)
 
             def bwd_hook(_m, _gi, go):
                 gradients.append(go[0])
 
-            h_fwd = target_layer.register_forward_hook(fwd_hook)
-            h_bwd = target_layer.register_full_backward_hook(bwd_hook)
+            h_fwd = last_block.register_forward_hook(fwd_hook)
+            h_bwd = last_block.register_full_backward_hook(bwd_hook)
             try:
+                # Match (no grad)
+                m_inputs = DINOV2_PROCESSOR(images=match_img, return_tensors='pt')
                 with torch.no_grad():
-                    m_emb = embed(ML_TRANSFORM(match_img).unsqueeze(0))
+                    m_out = DINOV2_MODEL(**m_inputs)
+                    m_emb = m_out.last_hidden_state[:, 0, :]
                     m_emb = m_emb / (m_emb.norm() + 1e-8)
-                # Discard activations from the match pass before running the
-                # query (the hook fired during the no_grad forward too).
+                # Discard activations recorded during the match forward.
                 activations.clear()
                 gradients.clear()
 
-                q_t = ML_TRANSFORM(query_img).unsqueeze(0)
-                q_t.requires_grad_(True)
-                q_emb = embed(q_t)
+                # Query (with grad)
+                q_inputs = DINOV2_PROCESSOR(images=query_img, return_tensors='pt')
+                # Need gradients to flow — pixel_values on most processors
+                # doesn't require grad by default; we only need grads on the
+                # last block's hidden states, so the hook covers it.
+                q_out = DINOV2_MODEL(**q_inputs)
+                q_emb = q_out.last_hidden_state[:, 0, :]
                 q_emb = q_emb / (q_emb.norm() + 1e-8)
                 sim = (q_emb * m_emb.detach()).sum()
 
-                ML_MODEL.zero_grad()
+                DINOV2_MODEL.zero_grad()
                 sim.backward()
 
-                grads = gradients[0].detach().cpu().numpy()[0]   # (2048, 7, 7)
-                acts = activations[0].detach().cpu().numpy()[0]  # (2048, 7, 7)
+                if not activations or not gradients:
+                    raise RuntimeError("DINOv2 hooks did not capture activations/gradients")
+
+                acts = activations[0].detach()[0]   # (1+P, hidden)
+                grads = gradients[0].detach()[0]    # (1+P, hidden)
             finally:
                 h_fwd.remove()
                 h_bwd.remove()
 
-        weights = grads.mean(axis=(1, 2))
-        cam = np.zeros(acts.shape[1:], dtype=np.float32)
-        for i, w in enumerate(weights):
-            cam += float(w) * acts[i]
-        cam = np.maximum(cam, 0)
+        # Drop CLS token, keep patch tokens.
+        patch_acts = acts[1:]
+        patch_grads = grads[1:]
+        # Saliency per patch = sum over hidden dim of (act * grad), ReLU.
+        saliency = (patch_acts * patch_grads).sum(dim=1).clamp(min=0)
+
+        n_patches = saliency.shape[0]
+        side = int(round(n_patches ** 0.5))
+        if side * side != n_patches:
+            raise RuntimeError(f"Unexpected patch count {n_patches}; can't reshape to a square grid")
+        cam = saliency.reshape(side, side).cpu().numpy()
+        cam = cam / (cam.max() + 1e-8)
+
         q_arr = np.array(query_img)
         cam = cv2.resize(cam, (q_arr.shape[1], q_arr.shape[0]))
-        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
 
         heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
         heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)

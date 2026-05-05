@@ -1,8 +1,8 @@
 {
-  "created": "2026-05-05T12:51:45.419141",
+  "created": "2026-05-05T18:24:18.654493",
   "total_images": 845,
-  "embedding_dim": 256,
-  "model": "CeramicClassifierV2.shared",
+  "embedding_dim": 384,
+  "model": "facebook/dinov2-small",
   "items": [
     {
       "id": "Degli_Espositi_1_SU_53.png",

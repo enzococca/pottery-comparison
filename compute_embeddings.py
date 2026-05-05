@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Compute visual embeddings for all ceramic images in the database using the
-fine-tuned v2 classifier as the feature extractor. Penultimate layer is
-256-dimensional and decoration/period/vessel-aware (the classifier was
-trained to predict those targets), so cosine similarity in this space is
-much more discriminating than ImageNet ResNet18 features.
+Compute visual embeddings for all ceramic images in the database using
+DINOv2-small (Meta's self-supervised ViT, facebook/dinov2-small). Its CLS
+token is a 384-dim embedding trained on a much larger and more diverse
+corpus than what the v2 classifier saw, and produces strong fine-grained
+similarity without requiring decoration labels.
 """
 
 import os
@@ -16,81 +16,31 @@ from pathlib import Path
 from datetime import datetime
 
 print("=" * 60)
-print("    COMPUTING IMAGE EMBEDDINGS (v2 classifier features)")
+print("    COMPUTING IMAGE EMBEDDINGS (DINOv2-small features)")
 print("=" * 60)
 
 try:
     import torch
-    import torch.nn as nn
-    from torchvision import transforms, models
     from PIL import Image
+    from transformers import AutoModel, AutoImageProcessor
 except ImportError:
     print("Installing required packages...")
-    os.system("pip install torch torchvision pillow")
+    os.system("pip install torch transformers pillow")
     import torch
-    import torch.nn as nn
-    from torchvision import transforms, models
     from PIL import Image
+    from transformers import AutoModel, AutoImageProcessor
 
 # Configuration
-IMG_SIZE = 224
-BATCH_SIZE = 32
 DB_PATH = "ceramica.db"
 OUTPUT_DIR = "ml_model"
 EMBEDDINGS_FILE = os.path.join(OUTPUT_DIR, "image_embeddings.npz")
 METADATA_FILE = os.path.join(OUTPUT_DIR, "embeddings_metadata.json")
-CLASSIFIER_V2_PATH = os.path.join(OUTPUT_DIR, "ceramic_classifier_v2.pt")
-ENCODERS_V2_PATH = os.path.join(OUTPUT_DIR, "label_encoders_v2.json")
+DINOV2_MODEL_ID = "facebook/dinov2-small"
 
 # Device
 device = torch.device("mps" if torch.backends.mps.is_available() else
                       "cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
-
-
-class CeramicClassifierV2(nn.Module):
-    """Same architecture as viewer_app.load_ml_model but here we expose the
-    `shared` 256-dim layer so we can use it as an embedding."""
-    def __init__(self, n_period, n_decoration, n_vessel, dropout=0.4):
-        super().__init__()
-        self.backbone = models.resnet50(weights=None)
-        n_features = self.backbone.fc.in_features  # 2048
-        self.backbone.fc = nn.Identity()
-
-        self.shared = nn.Sequential(
-            nn.Linear(n_features, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-        )
-        self.period_head = nn.Sequential(
-            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_period)
-        )
-        self.decoration_head = nn.Sequential(
-            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_decoration)
-        )
-        self.vessel_head = nn.Sequential(
-            nn.Linear(256, 128), nn.ReLU(), nn.Dropout(dropout/2), nn.Linear(128, n_vessel)
-        )
-
-    def embed(self, x):
-        return self.shared(self.backbone(x))
-
-    def forward(self, x):
-        shared = self.embed(x)
-        return self.period_head(shared), self.decoration_head(shared), self.vessel_head(shared)
-
-# Image transform
-transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-
 
 def content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=0.02):
     """Crop a PIL image to its non-white content bbox.
@@ -119,28 +69,21 @@ def content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=
     return img.crop((x0, y0, x1 + 1, y1 + 1))
 
 
-def load_image(image_path):
-    """Load and transform an image."""
-    try:
-        img = Image.open(image_path).convert('RGB')
-        img = content_bbox_crop(img)
-        return transform(img)
-    except Exception as e:
-        print(f"   Warning: Could not load {image_path}: {e}")
-        return None
-
 def main():
-    # Load fine-tuned v2 classifier and use its shared (penultimate) layer
-    print("\n[1/4] Loading v2 classifier as feature extractor...")
-    checkpoint = torch.load(CLASSIFIER_V2_PATH, map_location=device, weights_only=True)
-    model = CeramicClassifierV2(
-        checkpoint['n_period'],
-        checkpoint['n_decoration'],
-        checkpoint['n_vessel'],
-    ).to(device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    # Load DINOv2-small (self-supervised ViT, CLS token = 384-dim)
+    print("\n[1/4] Loading DINOv2-small from HuggingFace...")
+    processor = AutoImageProcessor.from_pretrained(DINOV2_MODEL_ID)
+    model = AutoModel.from_pretrained(DINOV2_MODEL_ID).to(device)
     model.eval()
-    print(f"   Model loaded (embedding dim: 256, decoration/period/vessel-aware)")
+    print(f"   Model loaded (embedding dim: {model.config.hidden_size})")
+
+    def load_image_pil(image_path):
+        try:
+            img = Image.open(image_path).convert('RGB')
+            return content_bbox_crop(img)
+        except Exception as e:
+            print(f"   Warning: Could not load {image_path}: {e}")
+            return None
 
     # Load data from database
     print("\n[2/4] Loading items from database...")
@@ -176,14 +119,13 @@ def main():
             if (i + 1) % 50 == 0 or i == 0:
                 print(f"   Processing {i+1}/{len(items)}...")
 
-            # Load image
-            img_tensor = load_image(image_path)
-            if img_tensor is None:
+            # Load image and extract DINOv2 CLS embedding
+            img_pil = load_image_pil(image_path)
+            if img_pil is None:
                 continue
-
-            # Extract embedding from the v2 classifier's shared (penultimate) layer
-            img_tensor = img_tensor.unsqueeze(0).to(device)
-            embedding = model.embed(img_tensor).cpu().numpy().flatten()
+            inputs = processor(images=img_pil, return_tensors='pt').to(device)
+            outputs = model(**inputs)
+            embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy().flatten()
 
             # Normalize embedding for cosine similarity
             embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
@@ -221,8 +163,8 @@ def main():
         json.dump({
             'created': datetime.now().isoformat(),
             'total_images': valid_count,
-            'embedding_dim': 256,
-            'model': 'CeramicClassifierV2.shared',
+            'embedding_dim': int(embeddings_array.shape[1]),
+            'model': DINOV2_MODEL_ID,
             'items': metadata
         }, f, indent=2)
     print(f"   Metadata saved: {METADATA_FILE}")
