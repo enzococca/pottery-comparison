@@ -12,6 +12,7 @@ import json
 import subprocess
 import webbrowser
 import sqlite3
+import threading
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import urllib.parse
@@ -953,23 +954,29 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         return {'error': str(e)}
 
 
+# Module-level lock around heatmap computation. Hook-based Grad-CAM mutates
+# shared lists, and Railway has tight RAM — serialize at app level so we
+# never duplicate model state in memory.
+_SIMILARITY_HEATMAP_LOCK = threading.Lock()
+
+
 def similarity_heatmap(query_image_data, match_image_path):
     """Generate Grad-CAM heatmap on the QUERY image showing what regions
     drive the cosine similarity with the given match (Issue A).
 
-    The previous "match heatmap" actually used the classifier's Grad-CAM,
-    which explained classification rather than similarity. This computes
-    gradients of cosine(query_emb, match_emb) wrt the query's last conv
-    activations, so the heatmap is faithful to similarity.
+    Reuses the global FEATURE_EXTRACTOR (no fresh ResNet18 per call) so
+    memory stays bounded, and serializes calls with a lock since hooks
+    mutate shared state.
     """
-    global ML_DISABLED
-    if ML_DISABLED:
+    global ML_DISABLED, FEATURE_EXTRACTOR
+    if ML_DISABLED or FEATURE_EXTRACTOR is None:
         return {'error': 'ML features are disabled'}
+    if not load_embeddings():
+        return {'error': 'Embeddings not available'}
 
     try:
         import torch
-        import torch.nn as nn
-        from torchvision import transforms, models
+        from torchvision import transforms
         from PIL import Image
         import cv2
 
@@ -980,7 +987,7 @@ def similarity_heatmap(query_image_data, match_image_path):
         query_img = Image.open(io.BytesIO(q_bytes)).convert('RGB')
         query_img = _content_bbox_crop(query_img)
 
-        # Load match image (resolve relative paths from project root)
+        # Resolve relative paths from project root
         match_path = match_image_path
         if not Path(match_path).is_absolute() and not Path(match_path).exists():
             alt = Path(__file__).parent / match_path
@@ -995,64 +1002,55 @@ def similarity_heatmap(query_image_data, match_image_path):
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
 
-        # Build a fresh ResNet18 (CPU; ~45MB) and put it in eval
-        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        resnet.eval()
+        with _SIMILARITY_HEATMAP_LOCK:
+            # FeatureExtractor wraps `nn.Sequential` of resnet18 layers (minus
+            # FC). Inside that Sequential the layers are ordered:
+            #   0:conv1 1:bn1 2:relu 3:maxpool 4:layer1 5:layer2 6:layer3
+            #   7:layer4 8:avgpool
+            # Hook layer4 (index 7) for Grad-CAM.
+            target_layer = FEATURE_EXTRACTOR.features[7]
 
-        activations = []
-        gradients = []
+            activations = []
+            gradients = []
 
-        def fwd_hook(_m, _i, out):
-            activations.append(out)
+            def fwd_hook(_m, _i, out):
+                activations.append(out)
 
-        def bwd_hook(_m, _gi, go):
-            gradients.append(go[0])
+            def bwd_hook(_m, _gi, go):
+                gradients.append(go[0])
 
-        h_fwd = resnet.layer4.register_forward_hook(fwd_hook)
-        h_bwd = resnet.layer4.register_full_backward_hook(bwd_hook)
+            h_fwd = target_layer.register_forward_hook(fwd_hook)
+            h_bwd = target_layer.register_full_backward_hook(bwd_hook)
+            try:
+                with torch.no_grad():
+                    m_emb = FEATURE_EXTRACTOR(transform(match_img).unsqueeze(0))
+                    m_emb = m_emb / (m_emb.norm() + 1e-8)
+                # The no_grad pass populated the hook lists with match data —
+                # discard before we run the query so the gradient backward
+                # sees only the query activations.
+                activations.clear()
+                gradients.clear()
 
-        def forward_emb(x):
-            # ResNet18 forward without the final fc
-            x = resnet.conv1(x)
-            x = resnet.bn1(x)
-            x = resnet.relu(x)
-            x = resnet.maxpool(x)
-            x = resnet.layer1(x)
-            x = resnet.layer2(x)
-            x = resnet.layer3(x)
-            x = resnet.layer4(x)
-            x = resnet.avgpool(x)
-            return x.view(x.size(0), -1)
+                q_t = transform(query_img).unsqueeze(0)
+                q_t.requires_grad_(True)
+                q_emb = FEATURE_EXTRACTOR(q_t)
+                q_emb = q_emb / (q_emb.norm() + 1e-8)
+                sim = (q_emb * m_emb.detach()).sum()
 
-        q_t = transform(query_img).unsqueeze(0)
-        q_t.requires_grad_(True)
-        m_t = transform(match_img).unsqueeze(0)
+                FEATURE_EXTRACTOR.zero_grad()
+                sim.backward()
 
-        with torch.no_grad():
-            m_emb = forward_emb(m_t)
-            m_emb = m_emb / (m_emb.norm() + 1e-8)
-        # forward_emb registered both query forward activations on layer4 hook;
-        # but the no_grad call above also triggers the hook — clear it.
-        activations.clear()
+                grads = gradients[0].detach().cpu().numpy()[0]   # (512, 7, 7)
+                acts = activations[0].detach().cpu().numpy()[0]  # (512, 7, 7)
+            finally:
+                h_fwd.remove()
+                h_bwd.remove()
 
-        q_emb = forward_emb(q_t)
-        q_emb = q_emb / (q_emb.norm() + 1e-8)
-        sim = (q_emb * m_emb.detach()).sum()
-
-        resnet.zero_grad()
-        sim.backward()
-
-        h_fwd.remove()
-        h_bwd.remove()
-
-        grads = gradients[0].detach().cpu().numpy()[0]   # (512, 7, 7)
-        acts = activations[0].detach().cpu().numpy()[0]  # (512, 7, 7)
         weights = grads.mean(axis=(1, 2))
         cam = np.zeros(acts.shape[1:], dtype=np.float32)
         for i, w in enumerate(weights):
             cam += float(w) * acts[i]
         cam = np.maximum(cam, 0)
-        # Resize to query (cropped) size
         q_arr = np.array(query_img)
         cam = cv2.resize(cam, (q_arr.shape[1], q_arr.shape[0]))
         cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
@@ -1065,6 +1063,9 @@ def similarity_heatmap(query_image_data, match_image_path):
         buf = io.BytesIO()
         out_pil.save(buf, format='PNG')
         b64 = base64.b64encode(buf.getvalue()).decode()
+
+        import gc
+        gc.collect()
 
         return {
             'success': True,
@@ -6618,13 +6619,10 @@ def get_viewer_html(role):
                 </div>
             `).join('');
 
-            // Preload heatmaps for top matches (lazy load)
+            // Heatmaps are computed on-demand when the user toggles them on,
+            // not preloaded — the worker is single-process and Railway has
+            // tight RAM, so 10 parallel Grad-CAMs OOM the container.
             matchHeatmaps = {{}};
-            items.slice(0, 10).forEach(item => {{
-                if (item.image_path) {{
-                    generateHeatmapForMatch(item.id, item.image_path);
-                }}
-            }});
         }}
 
         async function generateHeatmapForMatch(itemId, imagePath) {{
@@ -6659,28 +6657,44 @@ def get_viewer_html(role):
             }}
         }}
 
-        function toggleHeatmaps() {{
+        async function toggleHeatmaps() {{
             heatmapsVisible = !heatmapsVisible;
             const toggleBtn = document.getElementById('heatmapToggleBtn');
 
             if (heatmapsVisible) {{
-                toggleBtn.innerHTML = '&#128293; Hide similarity heatmaps';
+                toggleBtn.innerHTML = '&#9203; Loading heatmaps...';
                 toggleBtn.classList.add('active');
 
-                // Show heatmaps
-                document.querySelectorAll('.ml-match-card').forEach(card => {{
+                const cards = Array.from(document.querySelectorAll('.ml-match-card'));
+                // Sequential fetch: only one Grad-CAM at a time so the worker
+                // (single-threaded, tight RAM) doesn't get hammered.
+                for (const card of cards.slice(0, 10)) {{
+                    if (!heatmapsVisible) break; // user toggled off mid-load
                     const itemId = card.dataset.id;
                     const overlay = card.querySelector('.heatmap-overlay');
-                    if (overlay && matchHeatmaps[itemId]) {{
-                        overlay.src = matchHeatmaps[itemId];
-                        overlay.style.opacity = '0.6';
+                    if (!overlay) continue;
+                    const matchOriginal = card.querySelector('.match-original');
+                    const imagePath = matchOriginal ? matchOriginal.getAttribute('src') : null;
+                    if (!imagePath) continue;
+                    try {{
+                        if (!matchHeatmaps[itemId]) {{
+                            await generateHeatmapForMatch(itemId, imagePath);
+                        }}
+                        if (matchHeatmaps[itemId]) {{
+                            overlay.src = matchHeatmaps[itemId];
+                            overlay.style.opacity = '0.85';
+                        }}
+                    }} catch (err) {{
+                        console.warn('heatmap failed for', itemId, err);
                     }}
-                }});
+                }}
+                if (heatmapsVisible) {{
+                    toggleBtn.innerHTML = '&#128293; Hide similarity heatmaps';
+                }}
             }} else {{
                 toggleBtn.innerHTML = '&#128293; Show similarity heatmaps';
                 toggleBtn.classList.remove('active');
 
-                // Hide heatmaps
                 document.querySelectorAll('.heatmap-overlay').forEach(overlay => {{
                     overlay.style.opacity = '0';
                 }});
