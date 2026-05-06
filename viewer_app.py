@@ -884,18 +884,18 @@ _SIMILARITY_HEATMAP_LOCK = threading.Lock()
 
 
 def similarity_heatmap(query_image_data, match_image_path):
-    """Generate a saliency heatmap on the QUERY image showing what patches
-    drive the cosine similarity with the given match (Issue A), faithful
-    to the DINOv2 embedding used for ranking.
+    """Generate a saliency heatmap on the MATCH image showing which patches
+    of the candidate drive the cosine similarity with the user's query.
 
-    Hooks the PENULTIMATE encoder block of DINOv2-small. The last block
-    then mixes CLS with all patch tokens via self-attention, so backward
-    from cosine(query_cls, match_cls) produces non-zero gradients on every
-    patch. Hooking last_hidden_state directly gives zero patch gradients
-    (post-layernorm doesn't mix tokens). Saliency = ||grad||_2 per patch
-    reshaped to a 16x16 grid (16 = 224 / patch_size 14). Sum-over-hidden
-    aggregations (Grad-CAM-style) collapse to ~0 on ViT because activations
-    aren't ReLU and signed terms cancel.
+    Forward the query without gradients, forward the match WITH gradients,
+    and backprop cosine(query_cls, match_cls) into the match's penultimate
+    block. The last block's self-attention then mixes CLS with all patches
+    so gradients land on every patch token of the match (post-layernorm
+    CLS-only path collapses patch grads to zero, so we hook hidden_states[-2]).
+    Saliency = ||grad||_2 per patch, reshaped to 16x16 (16 = 224 / patch_size 14)
+    and resized to the match image. Sum-over-hidden Grad-CAM aggregations
+    collapse to ~0 on ViTs because layernormed activations aren't ReLU and
+    signed terms cancel.
     """
     global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
     if ML_DISABLED:
@@ -925,31 +925,33 @@ def similarity_heatmap(query_image_data, match_image_path):
         match_img = _content_bbox_crop(match_img)
 
         with _SIMILARITY_HEATMAP_LOCK:
-            # Match (no grad).
-            m_inputs = DINOV2_PROCESSOR(images=match_img, return_tensors='pt')
-            with torch.no_grad():
-                m_out = DINOV2_MODEL(**m_inputs)
-                m_emb = m_out.last_hidden_state[:, 0, :]
-                m_emb = m_emb / (m_emb.norm() + 1e-8)
-
-            # Query (with grad). Ask for hidden_states so we can hook the
-            # penultimate block's output via a tensor-level register_hook
-            # (rock-solid; module hooks on Dinov2Layer silently drop grads).
+            # Query (no grad) — only need its CLS embedding as a fixed target.
             q_inputs = DINOV2_PROCESSOR(images=query_img, return_tensors='pt')
+            with torch.no_grad():
+                q_out = DINOV2_MODEL(**q_inputs)
+                q_emb = q_out.last_hidden_state[:, 0, :]
+                q_emb = q_emb / (q_emb.norm() + 1e-8)
+
+            # Match (with grad). Hook the penultimate block of the MATCH
+            # forward so gradients land on the candidate's patch tokens
+            # — telling us which regions of the match contribute to its
+            # similarity to the query.
+            m_inputs = DINOV2_PROCESSOR(images=match_img, return_tensors='pt')
             DINOV2_MODEL.zero_grad()
-            q_out = DINOV2_MODEL(**q_inputs, output_hidden_states=True)
+            m_out = DINOV2_MODEL(**m_inputs, output_hidden_states=True)
 
             # hidden_states is (embeddings_out, layer_1_out, ..., layer_N_out).
-            # [-2] = penultimate block output: the last block then mixes
-            # CLS with patches via self-attention so backward produces
-            # non-zero gradients on every patch token.
-            target = q_out.hidden_states[-2]
+            # [-2] = penultimate block output: the last block's self-attention
+            # then mixes CLS with patches so backward produces non-zero grads
+            # on every patch token. (Hooking last_hidden_state instead gives
+            # zero patch grads — layernorm doesn't mix tokens.)
+            target = m_out.hidden_states[-2]
             grads_holder = []
             target.register_hook(lambda g: grads_holder.append(g))
 
-            q_emb = q_out.last_hidden_state[:, 0, :]
-            q_emb = q_emb / (q_emb.norm() + 1e-8)
-            sim = (q_emb * m_emb.detach()).sum()
+            m_emb = m_out.last_hidden_state[:, 0, :]
+            m_emb = m_emb / (m_emb.norm() + 1e-8)
+            sim = (m_emb * q_emb.detach()).sum()
             sim.backward()
 
             if not grads_holder:
@@ -971,12 +973,12 @@ def similarity_heatmap(query_image_data, match_image_path):
         cam = saliency.reshape(side, side).cpu().numpy()
         cam = cam / (cam.max() + 1e-8)
 
-        q_arr = np.array(query_img)
-        cam = cv2.resize(cam, (q_arr.shape[1], q_arr.shape[0]))
+        m_arr = np.array(match_img)
+        cam = cv2.resize(cam, (m_arr.shape[1], m_arr.shape[0]))
 
         heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
         heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-        overlay = (0.45 * heatmap + 0.55 * q_arr).astype(np.uint8)
+        overlay = (0.45 * heatmap + 0.55 * m_arr).astype(np.uint8)
 
         out_pil = Image.fromarray(overlay)
         buf = io.BytesIO()
@@ -1782,6 +1784,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         """Send HTML response"""
         self.send_response(status)
         self.send_header('Content-type', 'text/html; charset=utf-8')
+        # Embedded SPA: skip browser cache so Marta always gets the latest
+        # JS after each Railway redeploy without needing a hard reload.
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
 
@@ -6562,8 +6569,8 @@ def get_viewer_html(role):
                     <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
                     <div class="match-confidence">${{item.similarity}}% similar${{item.below_threshold ? ' <span style=&quot;color:#b8860b&quot;>(sotto soglia)</span>' : ''}}</div>
                     <div class="heatmap-block">
-                        <img class="heatmap-overlay" src="" alt="similarity heatmap on your image">
-                        <div class="heatmap-label">la TUA immagine &middot; zone che guidano questo match</div>
+                        <img class="heatmap-overlay" src="" alt="similarity heatmap on the match">
+                        <div class="heatmap-label">questo match &middot; zone che guidano la similarit&agrave; con la tua immagine</div>
                     </div>
                 </div>
             `).join('');
