@@ -855,6 +855,8 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
             "below_threshold_fallback": below_threshold_fallback,
             "max_similarity": round(float(sims.max()) * 100.0, 1) if len(sims) else 0.0,
             "threshold_pct": round(threshold * 100.0, 1),
+            "statistics": compute_similarity_statistics(results),
+            "analysis": generate_similarity_analysis(results),
             "version": 2,
         }
 
@@ -867,7 +869,9 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
     if n_top == 0:
         return {"similar_items": [], "total_corpus": 0, "version": 3,
                 "below_threshold_fallback": False, "max_similarity": 0.0,
-                "threshold_pct": round(threshold * 100.0, 1)}
+                "threshold_pct": round(threshold * 100.0, 1),
+                "statistics": compute_similarity_statistics([]),
+                "analysis": generate_similarity_analysis([])}
 
     top50_idx = np.argpartition(-coarse_masked, n_top - 1)[:n_top]
     top50_idx = top50_idx[np.argsort(-coarse_masked[top50_idx])]
@@ -925,6 +929,8 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
         "below_threshold_fallback": below_threshold_fallback,
         "max_similarity": round(float(rerank_scores.max() * 100.0), 1) if len(rerank_scores) else 0.0,
         "threshold_pct": round(threshold * 100.0, 1),
+        "statistics": compute_similarity_statistics(final),
+        "analysis": generate_similarity_analysis(final),
         "version": 3,
     }
 
