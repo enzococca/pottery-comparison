@@ -747,7 +747,7 @@ def load_embeddings():
             for it in EMBEDDINGS_METADATA["items"]:
                 t = it.get("image_type", "")
                 c = float(it.get("image_type_confidence", 0.0))
-                kept.append(t in {"decorated_vessel", "decoration_only"}
+                kept.append(t in {"decorated_vessel", "decoration_only", "decorated_photo"}
                             or (t == "unclassified" and c < 0.4))
             EMBEDDINGS_TYPE_KEEP = np.array(kept, dtype=bool)
             EMBEDDINGS_VERSION = 3

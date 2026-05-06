@@ -23,6 +23,7 @@ PROMPTS = {
     "decorated_vessel": "a technical drawing of an archaeological pottery vessel with decorative patterns",
     "profile_section":  "a thin profile section drawing of a pottery rim or base, no decoration",
     "decoration_only":  "a close-up of decorative ornament patterns on archaeological ceramics",
+    "decorated_photo":  "a color photograph of an archaeological ceramic vessel with decoration",
     "plain_vessel":     "a plain undecorated pottery vessel drawing",
     "unclassified":     "a scale bar, text label, or unrelated archaeological figure",
 }

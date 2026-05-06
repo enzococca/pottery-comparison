@@ -1,6 +1,6 @@
 {
-  "created": "2026-05-06T17:20:27.143672",
-  "total_images": 286,
+  "created": "2026-05-06T18:31:00.928072",
+  "total_images": 300,
   "embedding_dim": 384,
   "model": "facebook/dinov2-small",
   "version": 3,
@@ -16,7 +16,7 @@
       "page_ref": "pp. 74, 76 (Cap. 4.8.1)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5579573512077332,
+      "image_type_confidence": 0.557831883430481,
       "index": 0
     },
     {
@@ -30,7 +30,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5361473560333252,
+      "image_type_confidence": 0.53611159324646,
       "index": 1
     },
     {
@@ -44,7 +44,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5182542204856873,
+      "image_type_confidence": 0.5181978940963745,
       "index": 2
     },
     {
@@ -58,7 +58,7 @@
       "page_ref": "p. 76 (confronto Hili IIf)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5740053653717041,
+      "image_type_confidence": 0.5739905834197998,
       "index": 3
     },
     {
@@ -72,7 +72,7 @@
       "page_ref": "p. 76 (confronto Hili IIf)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5461708307266235,
+      "image_type_confidence": 0.546141505241394,
       "index": 4
     },
     {
@@ -86,7 +86,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5390976667404175,
+      "image_type_confidence": 0.538943886756897,
       "index": 5
     },
     {
@@ -100,7 +100,7 @@
       "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.49602457880973816,
+      "image_type_confidence": 0.49602124094963074,
       "index": 6
     },
     {
@@ -114,7 +114,7 @@
       "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8915371894836426,
+      "image_type_confidence": 0.8913823962211609,
       "index": 7
     },
     {
@@ -128,7 +128,7 @@
       "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6634284257888794,
+      "image_type_confidence": 0.6626998782157898,
       "index": 8
     },
     {
@@ -142,7 +142,7 @@
       "page_ref": "p. 76 (prima fase)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8958169221878052,
+      "image_type_confidence": 0.8957834243774414,
       "index": 9
     },
     {
@@ -156,7 +156,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.47004956007003784,
+      "image_type_confidence": 0.47000089287757874,
       "index": 10
     },
     {
@@ -170,7 +170,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8763793706893921,
+      "image_type_confidence": 0.8763420581817627,
       "index": 11
     },
     {
@@ -184,7 +184,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.493458092212677,
+      "image_type_confidence": 0.4934491515159607,
       "index": 12
     },
     {
@@ -198,7 +198,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4251018464565277,
+      "image_type_confidence": 0.42508503794670105,
       "index": 13
     },
     {
@@ -212,7 +212,7 @@
       "page_ref": "p. 68 (Cap. 4.8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8049123287200928,
+      "image_type_confidence": 0.8048807382583618,
       "index": 14
     },
     {
@@ -226,7 +226,7 @@
       "page_ref": "p. 76 (Tavv. XXVI, XXVII, XXXI)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6639144420623779,
+      "image_type_confidence": 0.6638525128364563,
       "index": 15
     },
     {
@@ -240,7 +240,7 @@
       "page_ref": "p. 83 (Cap. 4.9)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5323192477226257,
+      "image_type_confidence": 0.5322820544242859,
       "index": 16
     },
     {
@@ -254,7 +254,7 @@
       "page_ref": "pp. 117, 120 (Cap. 5.5)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8048884868621826,
+      "image_type_confidence": 0.8048596382141113,
       "index": 17
     },
     {
@@ -268,7 +268,7 @@
       "page_ref": "p. 120 (Cap. 5.5)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5656118988990784,
+      "image_type_confidence": 0.5655482411384583,
       "index": 18
     },
     {
@@ -282,7 +282,7 @@
       "page_ref": "pp. 104, 119 (Grave 3)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9185230135917664,
+      "image_type_confidence": 0.9180638194084167,
       "index": 19
     },
     {
@@ -296,7 +296,7 @@
       "page_ref": "pp. 104, 119 (Grave 3)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7230055928230286,
+      "image_type_confidence": 0.7229498028755188,
       "index": 20
     },
     {
@@ -310,7 +310,7 @@
       "page_ref": "p. 119 (decorazione Wadi Suq)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5000757575035095,
+      "image_type_confidence": 0.5000420808792114,
       "index": 21
     },
     {
@@ -324,7 +324,7 @@
       "page_ref": "p. 119 (decorazione Wadi Suq)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8026393055915833,
+      "image_type_confidence": 0.8024797439575195,
       "index": 22
     },
     {
@@ -338,7 +338,7 @@
       "page_ref": "pp. 119-120 (Cap. 5.5)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8147370219230652,
+      "image_type_confidence": 0.8133491277694702,
       "index": 23
     },
     {
@@ -352,7 +352,7 @@
       "page_ref": "p. 121 (JSS 2)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4672369658946991,
+      "image_type_confidence": 0.46721208095550537,
       "index": 24
     },
     {
@@ -366,7 +366,7 @@
       "page_ref": "p. 121 (JSS 3)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4646599292755127,
+      "image_type_confidence": 0.4646117687225342,
       "index": 25
     },
     {
@@ -380,7 +380,7 @@
       "page_ref": "p. 121 (JSS 3)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8358385562896729,
+      "image_type_confidence": 0.833987832069397,
       "index": 26
     },
     {
@@ -394,7 +394,7 @@
       "page_ref": "p. 129 (Cap. 6.1, SS2)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6672018766403198,
+      "image_type_confidence": 0.667178750038147,
       "index": 27
     },
     {
@@ -408,7 +408,7 @@
       "page_ref": "p. 129 (Cap. 6.1, SS6)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5626125931739807,
+      "image_type_confidence": 0.5625412464141846,
       "index": 28
     },
     {
@@ -422,7 +422,7 @@
       "page_ref": "p. 129 (Cap. 6.1, SS6)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4038175642490387,
+      "image_type_confidence": 0.4037649631500244,
       "index": 29
     },
     {
@@ -436,7 +436,7 @@
       "page_ref": "p. 129 (Cap. 6.1, SS8)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7537352442741394,
+      "image_type_confidence": 0.7536470293998718,
       "index": 30
     },
     {
@@ -450,7 +450,7 @@
       "page_ref": "p. 129 (Cap. 6.1, SS9)",
       "source_pdf": "2- Capp.4-5-6+bibliografia.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5992231965065002,
+      "image_type_confidence": 0.5991920828819275,
       "index": 31
     },
     {
@@ -464,7 +464,7 @@
       "page_ref": "p. 102 (Gobelets Hili 8)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7211190462112427,
+      "image_type_confidence": 0.7208036780357361,
       "index": 32
     },
     {
@@ -478,7 +478,7 @@
       "page_ref": "p. 102 (Gobelets Hili 8)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9329245090484619,
+      "image_type_confidence": 0.9326698780059814,
       "index": 33
     },
     {
@@ -492,7 +492,7 @@
       "page_ref": "p. 103 (Gobelets et fonds)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.607306718826294,
+      "image_type_confidence": 0.6072107553482056,
       "index": 34
     },
     {
@@ -506,7 +506,7 @@
       "page_ref": "p. 103 (Gobelets et fonds)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8086805939674377,
+      "image_type_confidence": 0.808479368686676,
       "index": 35
     },
     {
@@ -520,7 +520,7 @@
       "page_ref": "p. 103 (Gobelets et fonds)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6911112666130066,
+      "image_type_confidence": 0.6903648376464844,
       "index": 36
     },
     {
@@ -534,7 +534,7 @@
       "page_ref": "p. 113 (Pots globulaires)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5844759941101074,
+      "image_type_confidence": 0.5844388604164124,
       "index": 37
     },
     {
@@ -548,7 +548,7 @@
       "page_ref": "p. 113 (Pots globulaires)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4885006844997406,
+      "image_type_confidence": 0.4884880483150482,
       "index": 38
     },
     {
@@ -562,7 +562,7 @@
       "page_ref": "p. 114 (Pots et jarres miniatures)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8897200226783752,
+      "image_type_confidence": 0.8896418213844299,
       "index": 39
     },
     {
@@ -576,7 +576,7 @@
       "page_ref": "p. 114 (Pots et jarres miniatures)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7005718350410461,
+      "image_type_confidence": 0.7004899382591248,
       "index": 40
     },
     {
@@ -590,7 +590,7 @@
       "page_ref": "p. 114 (Pots et jarres miniatures)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7037719488143921,
+      "image_type_confidence": 0.7037350535392761,
       "index": 41
     },
     {
@@ -604,7 +604,7 @@
       "page_ref": "p. 115 (Jarres \u00e0 bec)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6893942356109619,
+      "image_type_confidence": 0.6892378926277161,
       "index": 42
     },
     {
@@ -618,7 +618,7 @@
       "page_ref": "p. 117 (Fragments peints)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8835446834564209,
+      "image_type_confidence": 0.883013904094696,
       "index": 43
     },
     {
@@ -632,7 +632,7 @@
       "page_ref": "p. 117 (Fragments peints)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6863452792167664,
+      "image_type_confidence": 0.6858298182487488,
       "index": 44
     },
     {
@@ -646,7 +646,7 @@
       "page_ref": "p. 42 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7945906519889832,
+      "image_type_confidence": 0.79442298412323,
       "index": 45
     },
     {
@@ -660,7 +660,7 @@
       "page_ref": "p. 42 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6375966668128967,
+      "image_type_confidence": 0.6369502544403076,
       "index": 46
     },
     {
@@ -674,7 +674,7 @@
       "page_ref": "p. 43 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8829420208930969,
+      "image_type_confidence": 0.8797992467880249,
       "index": 47
     },
     {
@@ -688,7 +688,7 @@
       "page_ref": "p. 43 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5244156718254089,
+      "image_type_confidence": 0.5244055390357971,
       "index": 48
     },
     {
@@ -702,7 +702,7 @@
       "page_ref": "p. 44 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5693898797035217,
+      "image_type_confidence": 0.567402184009552,
       "index": 49
     },
     {
@@ -716,7 +716,7 @@
       "page_ref": "p. 44 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5874517560005188,
+      "image_type_confidence": 0.5872887969017029,
       "index": 50
     },
     {
@@ -730,7 +730,7 @@
       "page_ref": "p. 44 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.834998369216919,
+      "image_type_confidence": 0.8348384499549866,
       "index": 51
     },
     {
@@ -744,7 +744,7 @@
       "page_ref": "p. 45 (Assemblage c\u00e9ramique)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7774868607521057,
+      "image_type_confidence": 0.7774423956871033,
       "index": 52
     },
     {
@@ -758,7 +758,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5336287617683411,
+      "image_type_confidence": 0.533613920211792,
       "index": 53
     },
     {
@@ -772,7 +772,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.39387694001197815,
+      "image_type_confidence": 0.39315342903137207,
       "index": 54
     },
     {
@@ -786,7 +786,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5385121703147888,
+      "image_type_confidence": 0.53816157579422,
       "index": 55
     },
     {
@@ -800,7 +800,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.49364185333251953,
+      "image_type_confidence": 0.49336951971054077,
       "index": 56
     },
     {
@@ -814,7 +814,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9768540263175964,
+      "image_type_confidence": 0.9764925241470337,
       "index": 57
     },
     {
@@ -828,7 +828,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7362638711929321,
+      "image_type_confidence": 0.7356116771697998,
       "index": 58
     },
     {
@@ -842,7 +842,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8984930515289307,
+      "image_type_confidence": 0.897970974445343,
       "index": 59
     },
     {
@@ -856,7 +856,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5012355446815491,
+      "image_type_confidence": 0.5012159943580627,
       "index": 60
     },
     {
@@ -870,7 +870,7 @@
       "page_ref": "p. 46 (Vaisselle pierre tendre)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7508978247642517,
+      "image_type_confidence": 0.7506207227706909,
       "index": 61
     },
     {
@@ -884,7 +884,7 @@
       "page_ref": "p. 48 (Miscellan\u00e9es)",
       "source_pdf": "Righetti_Th\u00e8se_Volume_II.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5164045691490173,
+      "image_type_confidence": 0.5163050293922424,
       "index": 62
     },
     {
@@ -898,7 +898,7 @@
       "page_ref": "p. 33",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6188430190086365,
+      "image_type_confidence": 0.6180177927017212,
       "index": 63
     },
     {
@@ -912,7 +912,7 @@
       "page_ref": "p. 54",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5736517310142517,
+      "image_type_confidence": 0.5728294253349304,
       "index": 64
     },
     {
@@ -926,7 +926,7 @@
       "page_ref": "p. 57",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.8117089867591858,
+      "image_type_confidence": 0.7960019111633301,
       "index": 65
     },
     {
@@ -940,7 +940,7 @@
       "page_ref": "p. 58",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9885362386703491,
+      "image_type_confidence": 0.9875575304031372,
       "index": 66
     },
     {
@@ -954,7 +954,7 @@
       "page_ref": "p. 61",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9495706558227539,
+      "image_type_confidence": 0.949298620223999,
       "index": 67
     },
     {
@@ -967,8 +967,8 @@
       "collection": "Pellegrino",
       "page_ref": "p. 130",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.5523186922073364,
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7578502893447876,
       "index": 68
     },
     {
@@ -982,7 +982,7 @@
       "page_ref": "p. 180",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.9147066473960876,
+      "image_type_confidence": 0.8258581757545471,
       "index": 69
     },
     {
@@ -996,7 +996,7 @@
       "page_ref": "p. 181",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.9505419731140137,
+      "image_type_confidence": 0.806107223033905,
       "index": 70
     },
     {
@@ -1010,8 +1010,22 @@
       "page_ref": "p. 185",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.9029589891433716,
+      "image_type_confidence": 0.84039306640625,
       "index": 71
+    },
+    {
+      "id": "Ch5_Fig6_1.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig6_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Masafi-5 - C\u00e9ramique (1600-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 186",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5506225824356079,
+      "index": 72
     },
     {
       "id": "Ch5_Fig7_2.jpeg",
@@ -1024,8 +1038,8 @@
       "page_ref": "p. 187",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.940701425075531,
-      "index": 72
+      "image_type_confidence": 0.8723849058151245,
+      "index": 73
     },
     {
       "id": "Ch5_Fig8_1.jpeg",
@@ -1037,9 +1051,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 187",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.445169061422348,
-      "index": 73
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8001968860626221,
+      "index": 74
     },
     {
       "id": "Ch5_Fig9_1.jpeg",
@@ -1052,8 +1066,22 @@
       "page_ref": "p. 188",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.8024908900260925,
-      "index": 74
+      "image_type_confidence": 0.5468385219573975,
+      "index": 75
+    },
+    {
+      "id": "Ch5_Fig10_2.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig10_2.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Masafi-5 - C\u00e9ramique (1600-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "pot",
+      "collection": "Pellegrino",
+      "page_ref": "p. 188",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7105541825294495,
+      "index": 76
     },
     {
       "id": "Ch5_Fig11_2.jpeg",
@@ -1066,8 +1094,8 @@
       "page_ref": "p. 189",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.6415539383888245,
-      "index": 75
+      "image_type_confidence": 0.5356106162071228,
+      "index": 77
     },
     {
       "id": "Ch5_Fig12_1.jpeg",
@@ -1079,9 +1107,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 190",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.424142062664032,
-      "index": 76
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7820217609405518,
+      "index": 78
     },
     {
       "id": "Ch5_Fig13_1.jpeg",
@@ -1094,8 +1122,8 @@
       "page_ref": "p. 191",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.7986116409301758,
-      "index": 77
+      "image_type_confidence": 0.7001355886459351,
+      "index": 79
     },
     {
       "id": "Ch5_Fig14_1.jpeg",
@@ -1107,9 +1135,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 192",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.7446391582489014,
-      "index": 78
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6026672720909119,
+      "index": 80
     },
     {
       "id": "Ch5_Fig16_1.jpeg",
@@ -1122,8 +1150,8 @@
       "page_ref": "p. 193",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.8885369300842285,
-      "index": 79
+      "image_type_confidence": 0.617290735244751,
+      "index": 81
     },
     {
       "id": "Ch5_Fig17_1.jpeg",
@@ -1135,9 +1163,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 194",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.5316694378852844,
-      "index": 80
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.42240962386131287,
+      "index": 82
     },
     {
       "id": "Ch5_Fig18_2.jpeg",
@@ -1149,9 +1177,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 195",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.5715065002441406,
-      "index": 81
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5056731700897217,
+      "index": 83
     },
     {
       "id": "Ch5_Fig19_1.jpeg",
@@ -1163,9 +1191,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 196",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.43744993209838867,
-      "index": 82
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6060583591461182,
+      "index": 84
     },
     {
       "id": "Ch5_Fig20_2.jpeg",
@@ -1178,8 +1206,8 @@
       "page_ref": "p. 198",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.5298513174057007,
-      "index": 83
+      "image_type_confidence": 0.4883616268634796,
+      "index": 85
     },
     {
       "id": "Ch5_Fig21_1.jpeg",
@@ -1191,9 +1219,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 201",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6297532320022583,
-      "index": 84
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.9337049722671509,
+      "index": 86
     },
     {
       "id": "Ch5_Fig22_2.jpeg",
@@ -1206,8 +1234,8 @@
       "page_ref": "p. 202",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.64129638671875,
-      "index": 85
+      "image_type_confidence": 0.5818129181861877,
+      "index": 87
     },
     {
       "id": "Ch5_Fig23_1.jpeg",
@@ -1220,8 +1248,8 @@
       "page_ref": "p. 203",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.8972423672676086,
-      "index": 86
+      "image_type_confidence": 0.7704295516014099,
+      "index": 88
     },
     {
       "id": "Ch5_Fig24_1.jpeg",
@@ -1233,9 +1261,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 205",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.7401443719863892,
-      "index": 87
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.4684831202030182,
+      "index": 89
     },
     {
       "id": "Ch5_Fig25_1.jpeg",
@@ -1248,8 +1276,22 @@
       "page_ref": "p. 207",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.5071293711662292,
-      "index": 88
+      "image_type_confidence": 0.45276346802711487,
+      "index": 90
+    },
+    {
+      "id": "Ch5_Fig25_2.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig25_2.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Masafi-5 - C\u00e9ramique (1600-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 207",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.3731781840324402,
+      "index": 91
     },
     {
       "id": "Ch5_Fig26_1.jpeg",
@@ -1262,8 +1304,22 @@
       "page_ref": "p. 207",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.5071293711662292,
-      "index": 89
+      "image_type_confidence": 0.45276346802711487,
+      "index": 92
+    },
+    {
+      "id": "Ch5_Fig26_2.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig26_2.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Phase I (Masafi-5)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 207",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.3731781840324402,
+      "index": 93
     },
     {
       "id": "Ch5_Fig27_1.jpeg",
@@ -1275,9 +1331,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 210",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.3520940840244293,
-      "index": 90
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7387803792953491,
+      "index": 94
     },
     {
       "id": "Ch5_Fig28_1.jpeg",
@@ -1289,9 +1345,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 211",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.5319103598594666,
-      "index": 91
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6806097626686096,
+      "index": 95
     },
     {
       "id": "Ch5_Fig29_2.jpeg",
@@ -1303,9 +1359,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 212",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.7101953625679016,
-      "index": 92
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5008938908576965,
+      "index": 96
     },
     {
       "id": "Ch5_Fig38_1.jpeg",
@@ -1317,9 +1373,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 239",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.49913400411605835,
-      "index": 93
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.48317089676856995,
+      "index": 97
     },
     {
       "id": "Ch5_Fig38_2.jpeg",
@@ -1331,9 +1387,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 239",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.4012731611728668,
-      "index": 94
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5985280275344849,
+      "index": 98
     },
     {
       "id": "Ch5_Fig41_1.jpeg",
@@ -1346,8 +1402,8 @@
       "page_ref": "p. 241",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.905936598777771,
-      "index": 95
+      "image_type_confidence": 0.7615227103233337,
+      "index": 99
     },
     {
       "id": "Ch5_Fig41_2.jpeg",
@@ -1359,9 +1415,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 241",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5077720284461975,
-      "index": 96
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6894571781158447,
+      "index": 100
     },
     {
       "id": "Ch5_Fig42_2.jpeg",
@@ -1373,9 +1429,37 @@
       "collection": "Pellegrino",
       "page_ref": "p. 242",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.3935471177101135,
-      "index": 97
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6213928461074829,
+      "index": 101
+    },
+    {
+      "id": "Ch5_Fig43_1.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig43_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Masafi-5 - C\u00e9ramique (1600-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "pot",
+      "collection": "Pellegrino",
+      "page_ref": "p. 243",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.41211381554603577,
+      "index": 102
+    },
+    {
+      "id": "Ch5_Fig44_1.jpeg",
+      "image_path": "Pellegrino/Ch5/Ch5_Fig44_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Masafi-5 - C\u00e9ramique (1600-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "pot",
+      "collection": "Pellegrino",
+      "page_ref": "p. 244",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5984512567520142,
+      "index": 103
     },
     {
       "id": "Ch5_Fig44_2.jpeg",
@@ -1387,9 +1471,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 244",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.5316694378852844,
-      "index": 98
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.42240962386131287,
+      "index": 104
     },
     {
       "id": "Ch6_Fig7_1.jpeg",
@@ -1402,8 +1486,8 @@
       "page_ref": "p. 337",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.5815459489822388,
-      "index": 99
+      "image_type_confidence": 0.45013973116874695,
+      "index": 105
     },
     {
       "id": "Ch6_Fig8_1.jpeg",
@@ -1415,9 +1499,23 @@
       "collection": "Pellegrino",
       "page_ref": "p. 338",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.3207702934741974,
-      "index": 100
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7251443862915039,
+      "index": 106
+    },
+    {
+      "id": "Ch6_Fig8_2.jpeg",
+      "image_path": "Pellegrino/Ch6/Ch6_Fig8_2.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "P\u00e9riode 3 (Masafi-5)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 338",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.3443451225757599,
+      "index": 107
     },
     {
       "id": "Ch6_Fig10_1.jpeg",
@@ -1430,8 +1528,22 @@
       "page_ref": "p. 339",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.5247020125389099,
-      "index": 101
+      "image_type_confidence": 0.45776501297950745,
+      "index": 108
+    },
+    {
+      "id": "Ch6_Fig14_1.jpeg",
+      "image_path": "Pellegrino/Ch6/Ch6_Fig14_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Fer I (1250-600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "pot",
+      "collection": "Pellegrino",
+      "page_ref": "p. 344",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.40563198924064636,
+      "index": 109
     },
     {
       "id": "Ch7_Fig9_2.jpeg",
@@ -1443,9 +1555,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 364",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.38905972242355347,
-      "index": 102
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5991175174713135,
+      "index": 110
     },
     {
       "id": "Ch7_Fig10_1.jpeg",
@@ -1458,8 +1570,8 @@
       "page_ref": "p. 366",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.9307538270950317,
-      "index": 103
+      "image_type_confidence": 0.8952847123146057,
+      "index": 111
     },
     {
       "id": "Ch10_Fig9_1.jpeg",
@@ -1471,9 +1583,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 415",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8204454183578491,
-      "index": 104
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7135825157165527,
+      "index": 112
     },
     {
       "id": "Ch10_Fig9_2.jpeg",
@@ -1485,9 +1597,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 415",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7844289541244507,
-      "index": 105
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8741580843925476,
+      "index": 113
     },
     {
       "id": "Ch10_Fig11_1.jpeg",
@@ -1499,9 +1611,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 416",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7341345548629761,
-      "index": 106
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8977593779563904,
+      "index": 114
     },
     {
       "id": "Ch10_Fig12_1.jpeg",
@@ -1513,9 +1625,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 417",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6804500818252563,
-      "index": 107
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.9350391030311584,
+      "index": 115
     },
     {
       "id": "Ch10_Fig12_2.jpeg",
@@ -1527,9 +1639,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 417",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5058335065841675,
-      "index": 108
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5046131014823914,
+      "index": 116
     },
     {
       "id": "Ch10_Fig15_1.jpeg",
@@ -1541,9 +1653,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 418",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.31516197323799133,
-      "index": 109
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8320126533508301,
+      "index": 117
     },
     {
       "id": "Ch10_Fig15_2.jpeg",
@@ -1555,9 +1667,23 @@
       "collection": "Pellegrino",
       "page_ref": "p. 418",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.691494882106781,
-      "index": 110
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8984275460243225,
+      "index": 118
+    },
+    {
+      "id": "Ch10_Fig16_1.jpeg",
+      "image_path": "Pellegrino/Ch10/Ch10_Fig16_1.jpeg",
+      "macro_period": "Wadi Suq",
+      "period": "Dibba/Qidfa (Wadi Suq, 2000-1600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 419",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.4964923858642578,
+      "index": 119
     },
     {
       "id": "Ch10_Fig17_1.jpeg",
@@ -1569,9 +1695,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 420",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8605169057846069,
-      "index": 111
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6833503246307373,
+      "index": 120
     },
     {
       "id": "Ch10_Fig18_2.jpeg",
@@ -1583,9 +1709,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 420",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8974175453186035,
-      "index": 112
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5277292728424072,
+      "index": 121
     },
     {
       "id": "Ch10_Fig21_2.jpeg",
@@ -1597,9 +1723,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 424",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7142676711082458,
-      "index": 113
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.599616289138794,
+      "index": 122
     },
     {
       "id": "Ch10_Fig22_1.jpeg",
@@ -1611,9 +1737,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 424",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8242653608322144,
-      "index": 114
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7591385245323181,
+      "index": 123
     },
     {
       "id": "Ch10_Fig22_2.jpeg",
@@ -1625,9 +1751,23 @@
       "collection": "Pellegrino",
       "page_ref": "p. 424",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7142676711082458,
-      "index": 115
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.599616289138794,
+      "index": 124
+    },
+    {
+      "id": "Ch10_Fig26_3.jpeg",
+      "image_path": "Pellegrino/Ch10/Ch10_Fig26_3.jpeg",
+      "macro_period": "Wadi Suq",
+      "period": "Dibba/Qidfa (Wadi Suq, 2000-1600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "jar",
+      "collection": "Pellegrino",
+      "page_ref": "p. 429",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5985613465309143,
+      "index": 125
     },
     {
       "id": "Ch10_Fig27_1.jpeg",
@@ -1639,9 +1779,23 @@
       "collection": "Pellegrino",
       "page_ref": "p. 430",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.41850918531417847,
-      "index": 116
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.5954835414886475,
+      "index": 126
+    },
+    {
+      "id": "Ch10_Fig27_2.jpeg",
+      "image_path": "Pellegrino/Ch10/Ch10_Fig27_2.jpeg",
+      "macro_period": "Wadi Suq",
+      "period": "Dibba/Qidfa (Wadi Suq, 2000-1600 av. J.-C.)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 430",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8258443474769592,
+      "index": 127
     },
     {
       "id": "Ch10_Fig29_1.jpeg",
@@ -1653,9 +1807,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 431",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8965083360671997,
-      "index": 117
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8850224018096924,
+      "index": 128
     },
     {
       "id": "Ch10_Fig33_1.jpeg",
@@ -1667,9 +1821,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 434",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.38620445132255554,
-      "index": 118
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6407067775726318,
+      "index": 129
     },
     {
       "id": "Ch10_Fig33_2.jpeg",
@@ -1681,9 +1835,23 @@
       "collection": "Pellegrino",
       "page_ref": "p. 434",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decorated_vessel",
-      "image_type_confidence": 0.3882516920566559,
-      "index": 119
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.8457866311073303,
+      "index": 130
+    },
+    {
+      "id": "Ch11_Fig8_1.jpeg",
+      "image_path": "Pellegrino/Ch11/Ch11_Fig8_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Husn Salut (Bronze R\u00e9cent / Fer I)",
+      "decoration": "decorated",
+      "vessel_type": "pot",
+      "collection": "Pellegrino",
+      "page_ref": "p. 449",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.4659351110458374,
+      "index": 131
     },
     {
       "id": "Ch11_Fig8_2.jpeg",
@@ -1696,8 +1864,8 @@
       "page_ref": "p. 449",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decoration_only",
-      "image_type_confidence": 0.7715221047401428,
-      "index": 120
+      "image_type_confidence": 0.4579322934150696,
+      "index": 132
     },
     {
       "id": "Ch11_Fig10_1.jpeg",
@@ -1709,9 +1877,37 @@
       "collection": "Pellegrino",
       "page_ref": "p. 450",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.7661208510398865,
+      "index": 133
+    },
+    {
+      "id": "Ch11_Fig10_2.jpeg",
+      "image_path": "Pellegrino/Ch11/Ch11_Fig10_2.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Husn Salut (Bronze R\u00e9cent / Fer I)",
+      "decoration": "decorated",
+      "vessel_type": "jar",
+      "collection": "Pellegrino",
+      "page_ref": "p. 450",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "unclassified",
-      "image_type_confidence": 0.3344154953956604,
-      "index": 121
+      "image_type_confidence": 0.3882230222225189,
+      "index": 134
+    },
+    {
+      "id": "Ch11_Fig12_1.jpeg",
+      "image_path": "Pellegrino/Ch11/Ch11_Fig12_1.jpeg",
+      "macro_period": "Late Bronze Age",
+      "period": "Husn Salut (Bronze R\u00e9cent / Fer I)",
+      "decoration": "decorated",
+      "vessel_type": "bowl",
+      "collection": "Pellegrino",
+      "page_ref": "p. 451",
+      "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.4140366315841675,
+      "index": 135
     },
     {
       "id": "Ch11_Fig13_2.jpeg",
@@ -1723,9 +1919,9 @@
       "collection": "Pellegrino",
       "page_ref": "p. 451",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
-      "image_type": "decoration_only",
-      "image_type_confidence": 0.6921707987785339,
-      "index": 122
+      "image_type": "decorated_photo",
+      "image_type_confidence": 0.6702166199684143,
+      "index": 136
     },
     {
       "id": "Pl_XI_01.png",
@@ -1738,8 +1934,8 @@
       "page_ref": "p. 257",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9818465113639832,
-      "index": 123
+      "image_type_confidence": 0.9817471504211426,
+      "index": 137
     },
     {
       "id": "Pl_XIV_01.png",
@@ -1752,8 +1948,8 @@
       "page_ref": "p. 260",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.48431506752967834,
-      "index": 124
+      "image_type_confidence": 0.4843035340309143,
+      "index": 138
     },
     {
       "id": "Pl_XIX_04.png",
@@ -1766,8 +1962,8 @@
       "page_ref": "p. 265",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.47792431712150574,
-      "index": 125
+      "image_type_confidence": 0.47790059447288513,
+      "index": 139
     },
     {
       "id": "Pl_XXXIII_02.png",
@@ -1780,8 +1976,8 @@
       "page_ref": "p. 279",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7898606061935425,
-      "index": 126
+      "image_type_confidence": 0.7897040247917175,
+      "index": 140
     },
     {
       "id": "Pl_XXXIX_04.png",
@@ -1794,8 +1990,8 @@
       "page_ref": "p. 285",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5778213143348694,
-      "index": 127
+      "image_type_confidence": 0.5778101682662964,
+      "index": 141
     },
     {
       "id": "Pl_XLVI_04.png",
@@ -1808,8 +2004,8 @@
       "page_ref": "p. 292",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9511197805404663,
-      "index": 128
+      "image_type_confidence": 0.9510965943336487,
+      "index": 142
     },
     {
       "id": "Pl_XLVI_05.png",
@@ -1822,8 +2018,8 @@
       "page_ref": "p. 292",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7368838787078857,
-      "index": 129
+      "image_type_confidence": 0.7368586659431458,
+      "index": 143
     },
     {
       "id": "Pl_XLVII_02.png",
@@ -1836,8 +2032,8 @@
       "page_ref": "p. 293",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7492147088050842,
-      "index": 130
+      "image_type_confidence": 0.7490262985229492,
+      "index": 144
     },
     {
       "id": "Pl_XLVIII_02.png",
@@ -1850,8 +2046,8 @@
       "page_ref": "p. 294",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.45247921347618103,
-      "index": 131
+      "image_type_confidence": 0.4524732530117035,
+      "index": 145
     },
     {
       "id": "Pl_XLVIII_03.png",
@@ -1864,8 +2060,8 @@
       "page_ref": "p. 294",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6888569593429565,
-      "index": 132
+      "image_type_confidence": 0.6888467073440552,
+      "index": 146
     },
     {
       "id": "Pl_XLVIII_04.png",
@@ -1878,8 +2074,8 @@
       "page_ref": "p. 294",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5589012503623962,
-      "index": 133
+      "image_type_confidence": 0.5588389039039612,
+      "index": 147
     },
     {
       "id": "Pl_XLIX_01.png",
@@ -1892,8 +2088,8 @@
       "page_ref": "p. 295",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "unclassified",
-      "image_type_confidence": 0.3713938295841217,
-      "index": 134
+      "image_type_confidence": 0.37138545513153076,
+      "index": 148
     },
     {
       "id": "Pl_L_04.png",
@@ -1906,8 +2102,8 @@
       "page_ref": "p. 296",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7874671220779419,
-      "index": 135
+      "image_type_confidence": 0.7874436974525452,
+      "index": 149
     },
     {
       "id": "Pl_LII_03.png",
@@ -1920,8 +2116,8 @@
       "page_ref": "p. 298",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "unclassified",
-      "image_type_confidence": 0.3941996395587921,
-      "index": 136
+      "image_type_confidence": 0.39418157935142517,
+      "index": 150
     },
     {
       "id": "Pl_LIV_03.png",
@@ -1934,8 +2130,8 @@
       "page_ref": "p. 300",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7135540843009949,
-      "index": 137
+      "image_type_confidence": 0.7134520411491394,
+      "index": 151
     },
     {
       "id": "Pl_LIV_05.png",
@@ -1948,8 +2144,8 @@
       "page_ref": "p. 300",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.72923743724823,
-      "index": 138
+      "image_type_confidence": 0.7291861176490784,
+      "index": 152
     },
     {
       "id": "Pl_LV_01.png",
@@ -1962,8 +2158,8 @@
       "page_ref": "p. 301",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8365278244018555,
-      "index": 139
+      "image_type_confidence": 0.8365030884742737,
+      "index": 153
     },
     {
       "id": "Pl_LV_02.png",
@@ -1976,8 +2172,8 @@
       "page_ref": "p. 301",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8151429295539856,
-      "index": 140
+      "image_type_confidence": 0.8151326179504395,
+      "index": 154
     },
     {
       "id": "Pl_LV_03.png",
@@ -1990,8 +2186,8 @@
       "page_ref": "p. 301",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.40209153294563293,
-      "index": 141
+      "image_type_confidence": 0.402054101228714,
+      "index": 155
     },
     {
       "id": "Pl_LVI_01.png",
@@ -2004,8 +2200,8 @@
       "page_ref": "p. 302",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7389918565750122,
-      "index": 142
+      "image_type_confidence": 0.7389665842056274,
+      "index": 156
     },
     {
       "id": "Pl_LVIII_02.png",
@@ -2018,8 +2214,8 @@
       "page_ref": "p. 304",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5977128148078918,
-      "index": 143
+      "image_type_confidence": 0.5977093577384949,
+      "index": 157
     },
     {
       "id": "Pl_LXII_01.png",
@@ -2032,8 +2228,8 @@
       "page_ref": "p. 308",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6753498315811157,
-      "index": 144
+      "image_type_confidence": 0.6753450036048889,
+      "index": 158
     },
     {
       "id": "Pl_LXII_02.png",
@@ -2046,8 +2242,8 @@
       "page_ref": "p. 308",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4442429542541504,
-      "index": 145
+      "image_type_confidence": 0.44422030448913574,
+      "index": 159
     },
     {
       "id": "Pl_LXIV_01.png",
@@ -2060,8 +2256,8 @@
       "page_ref": "p. 310",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5485091805458069,
-      "index": 146
+      "image_type_confidence": 0.5484964847564697,
+      "index": 160
     },
     {
       "id": "Pl_LXIV_02.png",
@@ -2074,8 +2270,8 @@
       "page_ref": "p. 310",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.869735062122345,
-      "index": 147
+      "image_type_confidence": 0.8696022629737854,
+      "index": 161
     },
     {
       "id": "Pl_LXIV_03.png",
@@ -2088,8 +2284,8 @@
       "page_ref": "p. 310",
       "source_pdf": "2021-11_Pellegrino_c\u00e9r.pdf",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.3842674195766449,
-      "index": 148
+      "image_type_confidence": 0.384259432554245,
+      "index": 162
     },
     {
       "id": "Smith_81",
@@ -2102,8 +2298,8 @@
       "page_ref": "p. 175",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.96297287940979,
-      "index": 149
+      "image_type_confidence": 0.9577009677886963,
+      "index": 163
     },
     {
       "id": "Smith_83",
@@ -2116,8 +2312,8 @@
       "page_ref": "p. 175",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9880298972129822,
-      "index": 150
+      "image_type_confidence": 0.9762144684791565,
+      "index": 164
     },
     {
       "id": "Smith_85",
@@ -2130,8 +2326,8 @@
       "page_ref": "p. 175",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9845907688140869,
-      "index": 151
+      "image_type_confidence": 0.9640095829963684,
+      "index": 165
     },
     {
       "id": "Smith_87",
@@ -2144,8 +2340,8 @@
       "page_ref": "p. 176",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9615110754966736,
-      "index": 152
+      "image_type_confidence": 0.9581556916236877,
+      "index": 166
     },
     {
       "id": "Smith_88",
@@ -2158,8 +2354,8 @@
       "page_ref": "p. 177",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5316774249076843,
-      "index": 153
+      "image_type_confidence": 0.5316175222396851,
+      "index": 167
     },
     {
       "id": "Smith_90",
@@ -2172,8 +2368,8 @@
       "page_ref": "p. 177",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9920910596847534,
-      "index": 154
+      "image_type_confidence": 0.9867839813232422,
+      "index": 168
     },
     {
       "id": "Smith_95",
@@ -2186,8 +2382,8 @@
       "page_ref": "p. 177",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4782739281654358,
-      "index": 155
+      "image_type_confidence": 0.4781087338924408,
+      "index": 169
     },
     {
       "id": "Smith_97",
@@ -2200,8 +2396,8 @@
       "page_ref": "p. 177",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4740607440471649,
-      "index": 156
+      "image_type_confidence": 0.4737805724143982,
+      "index": 170
     },
     {
       "id": "Smith_100",
@@ -2214,8 +2410,8 @@
       "page_ref": "p. 178",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9504000544548035,
-      "index": 157
+      "image_type_confidence": 0.9493571519851685,
+      "index": 171
     },
     {
       "id": "Smith_103",
@@ -2228,8 +2424,8 @@
       "page_ref": "p. 178",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7084515690803528,
-      "index": 158
+      "image_type_confidence": 0.7083285450935364,
+      "index": 172
     },
     {
       "id": "Smith_109",
@@ -2242,8 +2438,8 @@
       "page_ref": "p. 179",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6565470695495605,
-      "index": 159
+      "image_type_confidence": 0.6563521027565002,
+      "index": 173
     },
     {
       "id": "Smith_111",
@@ -2256,8 +2452,8 @@
       "page_ref": "p. 179",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9870843291282654,
-      "index": 160
+      "image_type_confidence": 0.9305864572525024,
+      "index": 174
     },
     {
       "id": "Smith_112",
@@ -2270,8 +2466,8 @@
       "page_ref": "p. 179",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9922141432762146,
-      "index": 161
+      "image_type_confidence": 0.9851834774017334,
+      "index": 175
     },
     {
       "id": "Smith_114",
@@ -2284,8 +2480,8 @@
       "page_ref": "p. 180",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9364250302314758,
-      "index": 162
+      "image_type_confidence": 0.9349893927574158,
+      "index": 176
     },
     {
       "id": "Smith_115",
@@ -2298,8 +2494,8 @@
       "page_ref": "p. 180",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7785100936889648,
-      "index": 163
+      "image_type_confidence": 0.7768133878707886,
+      "index": 177
     },
     {
       "id": "Smith_117",
@@ -2312,8 +2508,8 @@
       "page_ref": "p. 181",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.853224515914917,
-      "index": 164
+      "image_type_confidence": 0.8506455421447754,
+      "index": 178
     },
     {
       "id": "Smith_118",
@@ -2326,8 +2522,8 @@
       "page_ref": "p. 181",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.622977614402771,
-      "index": 165
+      "image_type_confidence": 0.6227794289588928,
+      "index": 179
     },
     {
       "id": "Smith_119",
@@ -2340,8 +2536,8 @@
       "page_ref": "p. 181",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4858277440071106,
-      "index": 166
+      "image_type_confidence": 0.48579561710357666,
+      "index": 180
     },
     {
       "id": "Smith_122",
@@ -2354,8 +2550,8 @@
       "page_ref": "p. 182",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.38277313113212585,
-      "index": 167
+      "image_type_confidence": 0.38270777463912964,
+      "index": 181
     },
     {
       "id": "Smith_123",
@@ -2368,8 +2564,8 @@
       "page_ref": "p. 182",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4430839419364929,
-      "index": 168
+      "image_type_confidence": 0.44305309653282166,
+      "index": 182
     },
     {
       "id": "Smith_124",
@@ -2382,8 +2578,8 @@
       "page_ref": "p. 182",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7810937762260437,
-      "index": 169
+      "image_type_confidence": 0.7810717821121216,
+      "index": 183
     },
     {
       "id": "Smith_125",
@@ -2396,8 +2592,8 @@
       "page_ref": "p. 182",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.44999563694000244,
-      "index": 170
+      "image_type_confidence": 0.4499698877334595,
+      "index": 184
     },
     {
       "id": "Smith_127",
@@ -2410,8 +2606,8 @@
       "page_ref": "p. 182",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6472841501235962,
-      "index": 171
+      "image_type_confidence": 0.6469626426696777,
+      "index": 185
     },
     {
       "id": "Smith_135",
@@ -2424,8 +2620,8 @@
       "page_ref": "p. 183",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5030272603034973,
-      "index": 172
+      "image_type_confidence": 0.5028824210166931,
+      "index": 186
     },
     {
       "id": "Smith_136",
@@ -2438,8 +2634,8 @@
       "page_ref": "p. 183",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.981270968914032,
-      "index": 173
+      "image_type_confidence": 0.9764150381088257,
+      "index": 187
     },
     {
       "id": "Smith_138",
@@ -2452,8 +2648,8 @@
       "page_ref": "p. 183",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6947388648986816,
-      "index": 174
+      "image_type_confidence": 0.6947171092033386,
+      "index": 188
     },
     {
       "id": "Smith_139",
@@ -2466,8 +2662,8 @@
       "page_ref": "p. 183",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9889407753944397,
-      "index": 175
+      "image_type_confidence": 0.9876299500465393,
+      "index": 189
     },
     {
       "id": "Smith_197",
@@ -2480,8 +2676,8 @@
       "page_ref": "p. 279",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5733739137649536,
-      "index": 176
+      "image_type_confidence": 0.5724233984947205,
+      "index": 190
     },
     {
       "id": "Smith_215",
@@ -2494,8 +2690,8 @@
       "page_ref": "p. 280",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.47167766094207764,
-      "index": 177
+      "image_type_confidence": 0.4716619551181793,
+      "index": 191
     },
     {
       "id": "Smith_219",
@@ -2508,8 +2704,8 @@
       "page_ref": "p. 281",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9616792798042297,
-      "index": 178
+      "image_type_confidence": 0.9585288166999817,
+      "index": 192
     },
     {
       "id": "Smith_224",
@@ -2522,8 +2718,8 @@
       "page_ref": "p. 281",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9361779093742371,
-      "index": 179
+      "image_type_confidence": 0.9171143174171448,
+      "index": 193
     },
     {
       "id": "Smith_248",
@@ -2536,8 +2732,8 @@
       "page_ref": "p. 283",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5070661306381226,
-      "index": 180
+      "image_type_confidence": 0.5070345401763916,
+      "index": 194
     },
     {
       "id": "Smith_293",
@@ -2550,8 +2746,8 @@
       "page_ref": "p. 287",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.46786123514175415,
-      "index": 181
+      "image_type_confidence": 0.46784505248069763,
+      "index": 195
     },
     {
       "id": "Smith_308",
@@ -2564,8 +2760,8 @@
       "page_ref": "p. 288",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6099849343299866,
-      "index": 182
+      "image_type_confidence": 0.6099233627319336,
+      "index": 196
     },
     {
       "id": "Smith_309",
@@ -2578,8 +2774,8 @@
       "page_ref": "p. 288",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7849135994911194,
-      "index": 183
+      "image_type_confidence": 0.7847784161567688,
+      "index": 197
     },
     {
       "id": "Smith_311",
@@ -2592,8 +2788,8 @@
       "page_ref": "p. 288",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5699784159660339,
-      "index": 184
+      "image_type_confidence": 0.569841206073761,
+      "index": 198
     },
     {
       "id": "Smith_312",
@@ -2606,8 +2802,8 @@
       "page_ref": "p. 288",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.740141749382019,
-      "index": 185
+      "image_type_confidence": 0.7400981783866882,
+      "index": 199
     },
     {
       "id": "Smith_322",
@@ -2620,8 +2816,8 @@
       "page_ref": "p. 289",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5091089606285095,
-      "index": 186
+      "image_type_confidence": 0.5087460875511169,
+      "index": 200
     },
     {
       "id": "Smith_326",
@@ -2634,8 +2830,8 @@
       "page_ref": "p. 289",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.953732967376709,
-      "index": 187
+      "image_type_confidence": 0.9480961561203003,
+      "index": 201
     },
     {
       "id": "Smith_330",
@@ -2648,8 +2844,8 @@
       "page_ref": "p. 185",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.45503512024879456,
-      "index": 188
+      "image_type_confidence": 0.4548734128475189,
+      "index": 202
     },
     {
       "id": "Smith_334",
@@ -2662,8 +2858,8 @@
       "page_ref": "p. 290",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.833937406539917,
-      "index": 189
+      "image_type_confidence": 0.8338531851768494,
+      "index": 203
     },
     {
       "id": "Smith_336",
@@ -2676,8 +2872,8 @@
       "page_ref": "p. 290",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9850467443466187,
-      "index": 190
+      "image_type_confidence": 0.9803867936134338,
+      "index": 204
     },
     {
       "id": "Smith_337",
@@ -2690,8 +2886,8 @@
       "page_ref": "p. 290",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9896959066390991,
-      "index": 191
+      "image_type_confidence": 0.9843682646751404,
+      "index": 205
     },
     {
       "id": "Smith_338",
@@ -2704,8 +2900,8 @@
       "page_ref": "p. 290",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9816545248031616,
-      "index": 192
+      "image_type_confidence": 0.9798164963722229,
+      "index": 206
     },
     {
       "id": "Smith_339",
@@ -2718,8 +2914,8 @@
       "page_ref": "p. 290",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9789634943008423,
-      "index": 193
+      "image_type_confidence": 0.9762752652168274,
+      "index": 207
     },
     {
       "id": "Smith_340",
@@ -2732,8 +2928,8 @@
       "page_ref": "p. 291",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9372627139091492,
-      "index": 194
+      "image_type_confidence": 0.9360504746437073,
+      "index": 208
     },
     {
       "id": "Smith_341",
@@ -2746,8 +2942,8 @@
       "page_ref": "p. 291",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8951500654220581,
-      "index": 195
+      "image_type_confidence": 0.8935196399688721,
+      "index": 209
     },
     {
       "id": "Smith_342",
@@ -2760,8 +2956,8 @@
       "page_ref": "p. 291",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9529901146888733,
-      "index": 196
+      "image_type_confidence": 0.9509642720222473,
+      "index": 210
     },
     {
       "id": "Smith_343",
@@ -2774,8 +2970,8 @@
       "page_ref": "p. 292",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9867152571678162,
-      "index": 197
+      "image_type_confidence": 0.9853200316429138,
+      "index": 211
     },
     {
       "id": "Smith_344",
@@ -2788,8 +2984,8 @@
       "page_ref": "p. 292",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9856054186820984,
-      "index": 198
+      "image_type_confidence": 0.982012927532196,
+      "index": 212
     },
     {
       "id": "Smith_345",
@@ -2802,8 +2998,8 @@
       "page_ref": "p. 292",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9911244511604309,
-      "index": 199
+      "image_type_confidence": 0.9844868779182434,
+      "index": 213
     },
     {
       "id": "Smith_346",
@@ -2816,8 +3012,8 @@
       "page_ref": "p. 293",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9926978945732117,
-      "index": 200
+      "image_type_confidence": 0.9872238636016846,
+      "index": 214
     },
     {
       "id": "Smith_354",
@@ -2830,8 +3026,8 @@
       "page_ref": "p. 294",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5433226227760315,
-      "index": 201
+      "image_type_confidence": 0.5433034896850586,
+      "index": 215
     },
     {
       "id": "Smith_356",
@@ -2844,8 +3040,8 @@
       "page_ref": "p. 294",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9068806767463684,
-      "index": 202
+      "image_type_confidence": 0.9066621661186218,
+      "index": 216
     },
     {
       "id": "Smith_358",
@@ -2858,8 +3054,8 @@
       "page_ref": "p. 295",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.994785726070404,
-      "index": 203
+      "image_type_confidence": 0.9904620051383972,
+      "index": 217
     },
     {
       "id": "Smith_359",
@@ -2872,8 +3068,8 @@
       "page_ref": "p. 295",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.934852659702301,
-      "index": 204
+      "image_type_confidence": 0.9241235852241516,
+      "index": 218
     },
     {
       "id": "Smith_360",
@@ -2886,8 +3082,8 @@
       "page_ref": "p. 295",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9581111669540405,
-      "index": 205
+      "image_type_confidence": 0.9576516151428223,
+      "index": 219
     },
     {
       "id": "Smith_361",
@@ -2900,8 +3096,8 @@
       "page_ref": "p. 295",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9858210682868958,
-      "index": 206
+      "image_type_confidence": 0.980205237865448,
+      "index": 220
     },
     {
       "id": "Smith_362",
@@ -2914,8 +3110,8 @@
       "page_ref": "p. 295",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5328540802001953,
-      "index": 207
+      "image_type_confidence": 0.5327389240264893,
+      "index": 221
     },
     {
       "id": "Smith_363",
@@ -2928,8 +3124,8 @@
       "page_ref": "p. 296",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6402177810668945,
-      "index": 208
+      "image_type_confidence": 0.6402117609977722,
+      "index": 222
     },
     {
       "id": "Smith_364",
@@ -2942,8 +3138,8 @@
       "page_ref": "p. 296",
       "source_pdf": "",
       "image_type": "unclassified",
-      "image_type_confidence": 0.38097935914993286,
-      "index": 209
+      "image_type_confidence": 0.38097769021987915,
+      "index": 223
     },
     {
       "id": "Smith_369",
@@ -2956,8 +3152,8 @@
       "page_ref": "p. 297",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9659610986709595,
-      "index": 210
+      "image_type_confidence": 0.965281069278717,
+      "index": 224
     },
     {
       "id": "Smith_370",
@@ -2970,8 +3166,8 @@
       "page_ref": "p. 297",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9831610321998596,
-      "index": 211
+      "image_type_confidence": 0.98087078332901,
+      "index": 225
     },
     {
       "id": "Smith_374",
@@ -2984,8 +3180,8 @@
       "page_ref": "p. 297",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5699581503868103,
-      "index": 212
+      "image_type_confidence": 0.5699310898780823,
+      "index": 226
     },
     {
       "id": "Smith_375",
@@ -2998,8 +3194,8 @@
       "page_ref": "p. 298",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8552610874176025,
-      "index": 213
+      "image_type_confidence": 0.8147813081741333,
+      "index": 227
     },
     {
       "id": "Smith_379",
@@ -3012,8 +3208,8 @@
       "page_ref": "p. 298",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9906923174858093,
-      "index": 214
+      "image_type_confidence": 0.9842177629470825,
+      "index": 228
     },
     {
       "id": "Smith_380",
@@ -3026,8 +3222,8 @@
       "page_ref": "p. 298",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9901651740074158,
-      "index": 215
+      "image_type_confidence": 0.9803226590156555,
+      "index": 229
     },
     {
       "id": "Smith_383",
@@ -3040,8 +3236,8 @@
       "page_ref": "p. 299",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9689485430717468,
-      "index": 216
+      "image_type_confidence": 0.9647842645645142,
+      "index": 230
     },
     {
       "id": "Smith_384",
@@ -3054,8 +3250,8 @@
       "page_ref": "p. 299",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8215737342834473,
-      "index": 217
+      "image_type_confidence": 0.8204368948936462,
+      "index": 231
     },
     {
       "id": "Smith_388",
@@ -3068,8 +3264,8 @@
       "page_ref": "p. 300",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9767172932624817,
-      "index": 218
+      "image_type_confidence": 0.9756903648376465,
+      "index": 232
     },
     {
       "id": "Smith_389",
@@ -3082,8 +3278,8 @@
       "page_ref": "p. 300",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6337326169013977,
-      "index": 219
+      "image_type_confidence": 0.633231520652771,
+      "index": 233
     },
     {
       "id": "Smith_392",
@@ -3096,8 +3292,8 @@
       "page_ref": "p. 301",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9867419600486755,
-      "index": 220
+      "image_type_confidence": 0.9814832806587219,
+      "index": 234
     },
     {
       "id": "Smith_393",
@@ -3110,8 +3306,8 @@
       "page_ref": "p. 301",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9815105199813843,
-      "index": 221
+      "image_type_confidence": 0.9610493779182434,
+      "index": 235
     },
     {
       "id": "Smith_394",
@@ -3124,8 +3320,8 @@
       "page_ref": "p. 301",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8843582272529602,
-      "index": 222
+      "image_type_confidence": 0.8842067122459412,
+      "index": 236
     },
     {
       "id": "Smith_398",
@@ -3138,8 +3334,8 @@
       "page_ref": "p. 302",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5167099237442017,
-      "index": 223
+      "image_type_confidence": 0.516698956489563,
+      "index": 237
     },
     {
       "id": "Smith_399",
@@ -3152,8 +3348,8 @@
       "page_ref": "p. 302",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6540718674659729,
-      "index": 224
+      "image_type_confidence": 0.6540263295173645,
+      "index": 238
     },
     {
       "id": "Smith_403",
@@ -3166,8 +3362,8 @@
       "page_ref": "p. 304",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9778221249580383,
-      "index": 225
+      "image_type_confidence": 0.967477023601532,
+      "index": 239
     },
     {
       "id": "Smith_404",
@@ -3180,8 +3376,8 @@
       "page_ref": "p. 304",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8811358213424683,
-      "index": 226
+      "image_type_confidence": 0.8802135586738586,
+      "index": 240
     },
     {
       "id": "Smith_409",
@@ -3194,8 +3390,8 @@
       "page_ref": "p. 304",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6470097303390503,
-      "index": 227
+      "image_type_confidence": 0.6469920873641968,
+      "index": 241
     },
     {
       "id": "Smith_410",
@@ -3208,8 +3404,8 @@
       "page_ref": "p. 304",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8013589382171631,
-      "index": 228
+      "image_type_confidence": 0.801315188407898,
+      "index": 242
     },
     {
       "id": "Smith_411",
@@ -3222,8 +3418,8 @@
       "page_ref": "p. 305",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.49376052618026733,
-      "index": 229
+      "image_type_confidence": 0.4937547743320465,
+      "index": 243
     },
     {
       "id": "Smith_412",
@@ -3236,8 +3432,8 @@
       "page_ref": "p. 305",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8357290029525757,
-      "index": 230
+      "image_type_confidence": 0.835674524307251,
+      "index": 244
     },
     {
       "id": "Smith_415",
@@ -3250,8 +3446,8 @@
       "page_ref": "p. 305",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6431164741516113,
-      "index": 231
+      "image_type_confidence": 0.6429994702339172,
+      "index": 245
     },
     {
       "id": "Smith_416",
@@ -3264,8 +3460,8 @@
       "page_ref": "p. 305",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7576150894165039,
-      "index": 232
+      "image_type_confidence": 0.7575042247772217,
+      "index": 246
     },
     {
       "id": "Smith_418",
@@ -3278,8 +3474,8 @@
       "page_ref": "p. 306",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6376633048057556,
-      "index": 233
+      "image_type_confidence": 0.6376540660858154,
+      "index": 247
     },
     {
       "id": "Smith_419",
@@ -3292,8 +3488,8 @@
       "page_ref": "p. 306",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6785506010055542,
-      "index": 234
+      "image_type_confidence": 0.6785406470298767,
+      "index": 248
     },
     {
       "id": "Smith_421",
@@ -3306,8 +3502,8 @@
       "page_ref": "p. 306",
       "source_pdf": "",
       "image_type": "unclassified",
-      "image_type_confidence": 0.3756427764892578,
-      "index": 235
+      "image_type_confidence": 0.37562790513038635,
+      "index": 249
     },
     {
       "id": "Smith_422",
@@ -3320,8 +3516,8 @@
       "page_ref": "p. 306",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7009694576263428,
-      "index": 236
+      "image_type_confidence": 0.7009384036064148,
+      "index": 250
     },
     {
       "id": "Smith_423",
@@ -3334,8 +3530,8 @@
       "page_ref": "p. 306",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6145811080932617,
-      "index": 237
+      "image_type_confidence": 0.6145482659339905,
+      "index": 251
     },
     {
       "id": "Smith_434",
@@ -3348,8 +3544,8 @@
       "page_ref": "p. 307",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4373360872268677,
-      "index": 238
+      "image_type_confidence": 0.43732988834381104,
+      "index": 252
     },
     {
       "id": "Smith_435",
@@ -3362,8 +3558,8 @@
       "page_ref": "p. 307",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7866078019142151,
-      "index": 239
+      "image_type_confidence": 0.7865200638771057,
+      "index": 253
     },
     {
       "id": "Smith_444",
@@ -3376,8 +3572,8 @@
       "page_ref": "p. 308",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.951725959777832,
-      "index": 240
+      "image_type_confidence": 0.9515854120254517,
+      "index": 254
     },
     {
       "id": "Smith_450",
@@ -3390,8 +3586,8 @@
       "page_ref": "p. 309",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6209549903869629,
-      "index": 241
+      "image_type_confidence": 0.6209390759468079,
+      "index": 255
     },
     {
       "id": "Smith_451",
@@ -3404,8 +3600,8 @@
       "page_ref": "p. 309",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.727098286151886,
-      "index": 242
+      "image_type_confidence": 0.7270843386650085,
+      "index": 256
     },
     {
       "id": "Smith_453",
@@ -3418,8 +3614,8 @@
       "page_ref": "p. 309",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8341581225395203,
-      "index": 243
+      "image_type_confidence": 0.8339769244194031,
+      "index": 257
     },
     {
       "id": "Smith_454",
@@ -3432,8 +3628,8 @@
       "page_ref": "p. 310",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6202268600463867,
-      "index": 244
+      "image_type_confidence": 0.6201459169387817,
+      "index": 258
     },
     {
       "id": "Smith_457",
@@ -3446,8 +3642,8 @@
       "page_ref": "p. 310",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5678026676177979,
-      "index": 245
+      "image_type_confidence": 0.567784309387207,
+      "index": 259
     },
     {
       "id": "Smith_464",
@@ -3460,8 +3656,8 @@
       "page_ref": "p. 310",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9214549660682678,
-      "index": 246
+      "image_type_confidence": 0.9208917021751404,
+      "index": 260
     },
     {
       "id": "Smith_465",
@@ -3474,8 +3670,8 @@
       "page_ref": "p. 311",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9906862378120422,
-      "index": 247
+      "image_type_confidence": 0.9882686138153076,
+      "index": 261
     },
     {
       "id": "Smith_472",
@@ -3488,8 +3684,8 @@
       "page_ref": "p. 311",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5338233709335327,
-      "index": 248
+      "image_type_confidence": 0.5338149070739746,
+      "index": 262
     },
     {
       "id": "Smith_473",
@@ -3502,8 +3698,8 @@
       "page_ref": "p. 312",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9254730343818665,
-      "index": 249
+      "image_type_confidence": 0.9250950217247009,
+      "index": 263
     },
     {
       "id": "Smith_474",
@@ -3516,8 +3712,8 @@
       "page_ref": "p. 312",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7493192553520203,
-      "index": 250
+      "image_type_confidence": 0.7490055561065674,
+      "index": 264
     },
     {
       "id": "Smith_475",
@@ -3530,8 +3726,8 @@
       "page_ref": "p. 312",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7359891533851624,
-      "index": 251
+      "image_type_confidence": 0.7356283068656921,
+      "index": 265
     },
     {
       "id": "Smith_478",
@@ -3544,8 +3740,8 @@
       "page_ref": "p. 312",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.3984573185443878,
-      "index": 252
+      "image_type_confidence": 0.3984438478946686,
+      "index": 266
     },
     {
       "id": "Smith_479",
@@ -3558,8 +3754,8 @@
       "page_ref": "p. 312",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7235289812088013,
-      "index": 253
+      "image_type_confidence": 0.7235051393508911,
+      "index": 267
     },
     {
       "id": "Smith_483",
@@ -3572,8 +3768,8 @@
       "page_ref": "p. 313",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8901817202568054,
-      "index": 254
+      "image_type_confidence": 0.8900396823883057,
+      "index": 268
     },
     {
       "id": "Smith_484",
@@ -3586,8 +3782,8 @@
       "page_ref": "p. 313",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8220499753952026,
-      "index": 255
+      "image_type_confidence": 0.822034478187561,
+      "index": 269
     },
     {
       "id": "Smith_485",
@@ -3600,8 +3796,8 @@
       "page_ref": "p. 314",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5918973088264465,
-      "index": 256
+      "image_type_confidence": 0.5917590856552124,
+      "index": 270
     },
     {
       "id": "Smith_487",
@@ -3614,8 +3810,8 @@
       "page_ref": "p. 314",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5614117980003357,
-      "index": 257
+      "image_type_confidence": 0.5611168146133423,
+      "index": 271
     },
     {
       "id": "Smith_491",
@@ -3628,8 +3824,8 @@
       "page_ref": "p. 314",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6796796321868896,
-      "index": 258
+      "image_type_confidence": 0.679593563079834,
+      "index": 272
     },
     {
       "id": "Smith_492",
@@ -3642,8 +3838,8 @@
       "page_ref": "p. 314",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8754467964172363,
-      "index": 259
+      "image_type_confidence": 0.8753905892372131,
+      "index": 273
     },
     {
       "id": "Smith_497",
@@ -3656,8 +3852,8 @@
       "page_ref": "p. 315",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7616799473762512,
-      "index": 260
+      "image_type_confidence": 0.7616694569587708,
+      "index": 274
     },
     {
       "id": "Smith_498",
@@ -3670,8 +3866,8 @@
       "page_ref": "p. 315",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9574525952339172,
-      "index": 261
+      "image_type_confidence": 0.9529463052749634,
+      "index": 275
     },
     {
       "id": "Smith_500",
@@ -3684,8 +3880,8 @@
       "page_ref": "p. 315",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9639055728912354,
-      "index": 262
+      "image_type_confidence": 0.9638656973838806,
+      "index": 276
     },
     {
       "id": "Smith_501",
@@ -3698,8 +3894,8 @@
       "page_ref": "p. 315",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8640713095664978,
-      "index": 263
+      "image_type_confidence": 0.8639328479766846,
+      "index": 277
     },
     {
       "id": "Smith_502",
@@ -3712,8 +3908,8 @@
       "page_ref": "p. 315",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.8722204566001892,
-      "index": 264
+      "image_type_confidence": 0.8719868063926697,
+      "index": 278
     },
     {
       "id": "Smith_507",
@@ -3726,8 +3922,8 @@
       "page_ref": "p. 316",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9021008610725403,
-      "index": 265
+      "image_type_confidence": 0.9020801186561584,
+      "index": 279
     },
     {
       "id": "Smith_510",
@@ -3740,8 +3936,8 @@
       "page_ref": "p. 317",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5808201432228088,
-      "index": 266
+      "image_type_confidence": 0.5806085467338562,
+      "index": 280
     },
     {
       "id": "Smith_511",
@@ -3754,8 +3950,8 @@
       "page_ref": "p. 317",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6549363732337952,
-      "index": 267
+      "image_type_confidence": 0.6543529033660889,
+      "index": 281
     },
     {
       "id": "Smith_512",
@@ -3768,8 +3964,8 @@
       "page_ref": "p. 317",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7874906063079834,
-      "index": 268
+      "image_type_confidence": 0.7866780161857605,
+      "index": 282
     },
     {
       "id": "Smith_522",
@@ -3782,8 +3978,8 @@
       "page_ref": "p. 318",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9556056261062622,
-      "index": 269
+      "image_type_confidence": 0.9555143713951111,
+      "index": 283
     },
     {
       "id": "Smith_524",
@@ -3796,8 +3992,8 @@
       "page_ref": "p. 318",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.930447518825531,
-      "index": 270
+      "image_type_confidence": 0.9303983449935913,
+      "index": 284
     },
     {
       "id": "Smith_525",
@@ -3810,8 +4006,8 @@
       "page_ref": "p. 318",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5389837026596069,
-      "index": 271
+      "image_type_confidence": 0.5389675498008728,
+      "index": 285
     },
     {
       "id": "Smith_527",
@@ -3824,8 +4020,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9479489922523499,
-      "index": 272
+      "image_type_confidence": 0.9478349089622498,
+      "index": 286
     },
     {
       "id": "Smith_528",
@@ -3838,8 +4034,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9755492210388184,
-      "index": 273
+      "image_type_confidence": 0.9753990173339844,
+      "index": 287
     },
     {
       "id": "Smith_529",
@@ -3852,8 +4048,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6730273365974426,
-      "index": 274
+      "image_type_confidence": 0.6729457974433899,
+      "index": 288
     },
     {
       "id": "Smith_530",
@@ -3866,8 +4062,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.40314868092536926,
-      "index": 275
+      "image_type_confidence": 0.40311914682388306,
+      "index": 289
     },
     {
       "id": "Smith_532",
@@ -3880,8 +4076,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.6703566908836365,
-      "index": 276
+      "image_type_confidence": 0.6702722311019897,
+      "index": 290
     },
     {
       "id": "Smith_534",
@@ -3894,8 +4090,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9398307800292969,
-      "index": 277
+      "image_type_confidence": 0.9397425651550293,
+      "index": 291
     },
     {
       "id": "Smith_535",
@@ -3908,8 +4104,8 @@
       "page_ref": "p. 319",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9021902084350586,
-      "index": 278
+      "image_type_confidence": 0.9021456837654114,
+      "index": 292
     },
     {
       "id": "Smith_536",
@@ -3922,8 +4118,8 @@
       "page_ref": "p. 320",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.670894205570221,
-      "index": 279
+      "image_type_confidence": 0.6708012819290161,
+      "index": 293
     },
     {
       "id": "Smith_539",
@@ -3936,8 +4132,8 @@
       "page_ref": "p. 320",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.4891410171985626,
-      "index": 280
+      "image_type_confidence": 0.4891355335712433,
+      "index": 294
     },
     {
       "id": "Smith_543",
@@ -3950,8 +4146,8 @@
       "page_ref": "p. 321",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.5987915992736816,
-      "index": 281
+      "image_type_confidence": 0.5987486839294434,
+      "index": 295
     },
     {
       "id": "Smith_544",
@@ -3964,8 +4160,8 @@
       "page_ref": "p. 321",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.7627147436141968,
-      "index": 282
+      "image_type_confidence": 0.7626503109931946,
+      "index": 296
     },
     {
       "id": "Smith_545",
@@ -3978,8 +4174,8 @@
       "page_ref": "p. 321",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9033674597740173,
-      "index": 283
+      "image_type_confidence": 0.903083086013794,
+      "index": 297
     },
     {
       "id": "Smith_547",
@@ -3992,8 +4188,8 @@
       "page_ref": "p. 321",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.934825599193573,
-      "index": 284
+      "image_type_confidence": 0.934758722782135,
+      "index": 298
     },
     {
       "id": "Smith_550",
@@ -4006,8 +4202,8 @@
       "page_ref": "p. 322",
       "source_pdf": "",
       "image_type": "decorated_vessel",
-      "image_type_confidence": 0.9553987383842468,
-      "index": 285
+      "image_type_confidence": 0.9516847133636475,
+      "index": 299
     }
   ]
 }

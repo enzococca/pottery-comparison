@@ -34,7 +34,7 @@ METADATA_FILE = os.path.join(OUTPUT_DIR, "embeddings_metadata_v3.json")
 DINOV2_MODEL_ID = "facebook/dinov2-small"
 
 # Search-time filter rule (mirrored in viewer_app.py).
-KEPT_TYPES = {"decorated_vessel", "decoration_only"}
+KEPT_TYPES = {"decorated_vessel", "decoration_only", "decorated_photo"}
 LOW_CONF_KEEP = "unclassified"
 LOW_CONF_THRESHOLD = 0.4
 
@@ -127,7 +127,14 @@ def main():
 
             cls = hidden[0]                                   # (384,)
             patches = hidden[1:]                              # (256, 384)
-            mean_emb = patches.mean(dim=0)                    # (384,)
+
+            # Mean only over content-bearing patches: white-background
+            # tokens dilute the signal otherwise. valid_mask was computed
+            # by preprocess_for_dinov2 on the post-mask image; it must
+            # have at least one True (the earlier `if not valid_mask.any()`
+            # guard skips items that failed this check).
+            valid_idx = torch.from_numpy(valid_mask).to(device)
+            mean_emb = patches[valid_idx].mean(dim=0)         # (384,)
 
             cls_n = (cls / (cls.norm() + 1e-8)).cpu().numpy().astype(np.float32)
             mean_n = (mean_emb / (mean_emb.norm() + 1e-8)).cpu().numpy().astype(np.float32)
