@@ -1,6 +1,6 @@
 {
-  "created": "2026-05-06T17:06:55.202994",
-  "total_images": 287,
+  "created": "2026-05-06T17:20:27.143672",
+  "total_images": 286,
   "embedding_dim": 384,
   "model": "facebook/dinov2-small",
   "version": 3,
@@ -2512,20 +2512,6 @@
       "index": 178
     },
     {
-      "id": "Smith_223",
-      "image_path": "images/Schmidt_Bat/Smith_223.png",
-      "macro_period": "Umm an-Nar",
-      "period": "Umm an-Nar (2700-2000 BC)",
-      "decoration": "painted",
-      "vessel_type": "flask",
-      "collection": "Schmidt_Bat",
-      "page_ref": "p. 281",
-      "source_pdf": "",
-      "image_type": "unclassified",
-      "image_type_confidence": 0.33915361762046814,
-      "index": 179
-    },
-    {
       "id": "Smith_224",
       "image_path": "images/Schmidt_Bat/Smith_224.png",
       "macro_period": "Umm an-Nar",
@@ -2537,7 +2523,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9361779093742371,
-      "index": 180
+      "index": 179
     },
     {
       "id": "Smith_248",
@@ -2551,7 +2537,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5070661306381226,
-      "index": 181
+      "index": 180
     },
     {
       "id": "Smith_293",
@@ -2565,7 +2551,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.46786123514175415,
-      "index": 182
+      "index": 181
     },
     {
       "id": "Smith_308",
@@ -2579,7 +2565,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6099849343299866,
-      "index": 183
+      "index": 182
     },
     {
       "id": "Smith_309",
@@ -2593,7 +2579,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7849135994911194,
-      "index": 184
+      "index": 183
     },
     {
       "id": "Smith_311",
@@ -2607,7 +2593,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5699784159660339,
-      "index": 185
+      "index": 184
     },
     {
       "id": "Smith_312",
@@ -2621,7 +2607,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.740141749382019,
-      "index": 186
+      "index": 185
     },
     {
       "id": "Smith_322",
@@ -2635,7 +2621,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5091089606285095,
-      "index": 187
+      "index": 186
     },
     {
       "id": "Smith_326",
@@ -2649,7 +2635,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.953732967376709,
-      "index": 188
+      "index": 187
     },
     {
       "id": "Smith_330",
@@ -2663,7 +2649,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.45503512024879456,
-      "index": 189
+      "index": 188
     },
     {
       "id": "Smith_334",
@@ -2677,7 +2663,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.833937406539917,
-      "index": 190
+      "index": 189
     },
     {
       "id": "Smith_336",
@@ -2691,7 +2677,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9850467443466187,
-      "index": 191
+      "index": 190
     },
     {
       "id": "Smith_337",
@@ -2705,7 +2691,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9896959066390991,
-      "index": 192
+      "index": 191
     },
     {
       "id": "Smith_338",
@@ -2719,7 +2705,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9816545248031616,
-      "index": 193
+      "index": 192
     },
     {
       "id": "Smith_339",
@@ -2733,7 +2719,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9789634943008423,
-      "index": 194
+      "index": 193
     },
     {
       "id": "Smith_340",
@@ -2747,7 +2733,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9372627139091492,
-      "index": 195
+      "index": 194
     },
     {
       "id": "Smith_341",
@@ -2761,7 +2747,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8951500654220581,
-      "index": 196
+      "index": 195
     },
     {
       "id": "Smith_342",
@@ -2775,7 +2761,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9529901146888733,
-      "index": 197
+      "index": 196
     },
     {
       "id": "Smith_343",
@@ -2789,7 +2775,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9867152571678162,
-      "index": 198
+      "index": 197
     },
     {
       "id": "Smith_344",
@@ -2803,7 +2789,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9856054186820984,
-      "index": 199
+      "index": 198
     },
     {
       "id": "Smith_345",
@@ -2817,7 +2803,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9911244511604309,
-      "index": 200
+      "index": 199
     },
     {
       "id": "Smith_346",
@@ -2831,7 +2817,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9926978945732117,
-      "index": 201
+      "index": 200
     },
     {
       "id": "Smith_354",
@@ -2845,7 +2831,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5433226227760315,
-      "index": 202
+      "index": 201
     },
     {
       "id": "Smith_356",
@@ -2859,7 +2845,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9068806767463684,
-      "index": 203
+      "index": 202
     },
     {
       "id": "Smith_358",
@@ -2873,7 +2859,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.994785726070404,
-      "index": 204
+      "index": 203
     },
     {
       "id": "Smith_359",
@@ -2887,7 +2873,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.934852659702301,
-      "index": 205
+      "index": 204
     },
     {
       "id": "Smith_360",
@@ -2901,7 +2887,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9581111669540405,
-      "index": 206
+      "index": 205
     },
     {
       "id": "Smith_361",
@@ -2915,7 +2901,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9858210682868958,
-      "index": 207
+      "index": 206
     },
     {
       "id": "Smith_362",
@@ -2929,7 +2915,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5328540802001953,
-      "index": 208
+      "index": 207
     },
     {
       "id": "Smith_363",
@@ -2943,7 +2929,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6402177810668945,
-      "index": 209
+      "index": 208
     },
     {
       "id": "Smith_364",
@@ -2957,7 +2943,7 @@
       "source_pdf": "",
       "image_type": "unclassified",
       "image_type_confidence": 0.38097935914993286,
-      "index": 210
+      "index": 209
     },
     {
       "id": "Smith_369",
@@ -2971,7 +2957,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9659610986709595,
-      "index": 211
+      "index": 210
     },
     {
       "id": "Smith_370",
@@ -2985,7 +2971,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9831610321998596,
-      "index": 212
+      "index": 211
     },
     {
       "id": "Smith_374",
@@ -2999,7 +2985,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5699581503868103,
-      "index": 213
+      "index": 212
     },
     {
       "id": "Smith_375",
@@ -3013,7 +2999,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8552610874176025,
-      "index": 214
+      "index": 213
     },
     {
       "id": "Smith_379",
@@ -3027,7 +3013,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9906923174858093,
-      "index": 215
+      "index": 214
     },
     {
       "id": "Smith_380",
@@ -3041,7 +3027,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9901651740074158,
-      "index": 216
+      "index": 215
     },
     {
       "id": "Smith_383",
@@ -3055,7 +3041,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9689485430717468,
-      "index": 217
+      "index": 216
     },
     {
       "id": "Smith_384",
@@ -3069,7 +3055,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8215737342834473,
-      "index": 218
+      "index": 217
     },
     {
       "id": "Smith_388",
@@ -3083,7 +3069,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9767172932624817,
-      "index": 219
+      "index": 218
     },
     {
       "id": "Smith_389",
@@ -3097,7 +3083,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6337326169013977,
-      "index": 220
+      "index": 219
     },
     {
       "id": "Smith_392",
@@ -3111,7 +3097,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9867419600486755,
-      "index": 221
+      "index": 220
     },
     {
       "id": "Smith_393",
@@ -3125,7 +3111,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9815105199813843,
-      "index": 222
+      "index": 221
     },
     {
       "id": "Smith_394",
@@ -3139,7 +3125,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8843582272529602,
-      "index": 223
+      "index": 222
     },
     {
       "id": "Smith_398",
@@ -3153,7 +3139,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5167099237442017,
-      "index": 224
+      "index": 223
     },
     {
       "id": "Smith_399",
@@ -3167,7 +3153,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6540718674659729,
-      "index": 225
+      "index": 224
     },
     {
       "id": "Smith_403",
@@ -3181,7 +3167,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9778221249580383,
-      "index": 226
+      "index": 225
     },
     {
       "id": "Smith_404",
@@ -3195,7 +3181,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8811358213424683,
-      "index": 227
+      "index": 226
     },
     {
       "id": "Smith_409",
@@ -3209,7 +3195,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6470097303390503,
-      "index": 228
+      "index": 227
     },
     {
       "id": "Smith_410",
@@ -3223,7 +3209,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8013589382171631,
-      "index": 229
+      "index": 228
     },
     {
       "id": "Smith_411",
@@ -3237,7 +3223,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.49376052618026733,
-      "index": 230
+      "index": 229
     },
     {
       "id": "Smith_412",
@@ -3251,7 +3237,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8357290029525757,
-      "index": 231
+      "index": 230
     },
     {
       "id": "Smith_415",
@@ -3265,7 +3251,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6431164741516113,
-      "index": 232
+      "index": 231
     },
     {
       "id": "Smith_416",
@@ -3279,7 +3265,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7576150894165039,
-      "index": 233
+      "index": 232
     },
     {
       "id": "Smith_418",
@@ -3293,7 +3279,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6376633048057556,
-      "index": 234
+      "index": 233
     },
     {
       "id": "Smith_419",
@@ -3307,7 +3293,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6785506010055542,
-      "index": 235
+      "index": 234
     },
     {
       "id": "Smith_421",
@@ -3321,7 +3307,7 @@
       "source_pdf": "",
       "image_type": "unclassified",
       "image_type_confidence": 0.3756427764892578,
-      "index": 236
+      "index": 235
     },
     {
       "id": "Smith_422",
@@ -3335,7 +3321,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7009694576263428,
-      "index": 237
+      "index": 236
     },
     {
       "id": "Smith_423",
@@ -3349,7 +3335,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6145811080932617,
-      "index": 238
+      "index": 237
     },
     {
       "id": "Smith_434",
@@ -3363,7 +3349,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.4373360872268677,
-      "index": 239
+      "index": 238
     },
     {
       "id": "Smith_435",
@@ -3377,7 +3363,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7866078019142151,
-      "index": 240
+      "index": 239
     },
     {
       "id": "Smith_444",
@@ -3391,7 +3377,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.951725959777832,
-      "index": 241
+      "index": 240
     },
     {
       "id": "Smith_450",
@@ -3405,7 +3391,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6209549903869629,
-      "index": 242
+      "index": 241
     },
     {
       "id": "Smith_451",
@@ -3419,7 +3405,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.727098286151886,
-      "index": 243
+      "index": 242
     },
     {
       "id": "Smith_453",
@@ -3433,7 +3419,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8341581225395203,
-      "index": 244
+      "index": 243
     },
     {
       "id": "Smith_454",
@@ -3447,7 +3433,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6202268600463867,
-      "index": 245
+      "index": 244
     },
     {
       "id": "Smith_457",
@@ -3461,7 +3447,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5678026676177979,
-      "index": 246
+      "index": 245
     },
     {
       "id": "Smith_464",
@@ -3475,7 +3461,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9214549660682678,
-      "index": 247
+      "index": 246
     },
     {
       "id": "Smith_465",
@@ -3489,7 +3475,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9906862378120422,
-      "index": 248
+      "index": 247
     },
     {
       "id": "Smith_472",
@@ -3503,7 +3489,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5338233709335327,
-      "index": 249
+      "index": 248
     },
     {
       "id": "Smith_473",
@@ -3517,7 +3503,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9254730343818665,
-      "index": 250
+      "index": 249
     },
     {
       "id": "Smith_474",
@@ -3531,7 +3517,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7493192553520203,
-      "index": 251
+      "index": 250
     },
     {
       "id": "Smith_475",
@@ -3545,7 +3531,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7359891533851624,
-      "index": 252
+      "index": 251
     },
     {
       "id": "Smith_478",
@@ -3559,7 +3545,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.3984573185443878,
-      "index": 253
+      "index": 252
     },
     {
       "id": "Smith_479",
@@ -3573,7 +3559,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7235289812088013,
-      "index": 254
+      "index": 253
     },
     {
       "id": "Smith_483",
@@ -3587,7 +3573,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8901817202568054,
-      "index": 255
+      "index": 254
     },
     {
       "id": "Smith_484",
@@ -3601,7 +3587,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8220499753952026,
-      "index": 256
+      "index": 255
     },
     {
       "id": "Smith_485",
@@ -3615,7 +3601,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5918973088264465,
-      "index": 257
+      "index": 256
     },
     {
       "id": "Smith_487",
@@ -3629,7 +3615,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5614117980003357,
-      "index": 258
+      "index": 257
     },
     {
       "id": "Smith_491",
@@ -3643,7 +3629,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6796796321868896,
-      "index": 259
+      "index": 258
     },
     {
       "id": "Smith_492",
@@ -3657,7 +3643,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8754467964172363,
-      "index": 260
+      "index": 259
     },
     {
       "id": "Smith_497",
@@ -3671,7 +3657,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7616799473762512,
-      "index": 261
+      "index": 260
     },
     {
       "id": "Smith_498",
@@ -3685,7 +3671,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9574525952339172,
-      "index": 262
+      "index": 261
     },
     {
       "id": "Smith_500",
@@ -3699,7 +3685,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9639055728912354,
-      "index": 263
+      "index": 262
     },
     {
       "id": "Smith_501",
@@ -3713,7 +3699,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8640713095664978,
-      "index": 264
+      "index": 263
     },
     {
       "id": "Smith_502",
@@ -3727,7 +3713,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.8722204566001892,
-      "index": 265
+      "index": 264
     },
     {
       "id": "Smith_507",
@@ -3741,7 +3727,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9021008610725403,
-      "index": 266
+      "index": 265
     },
     {
       "id": "Smith_510",
@@ -3755,7 +3741,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5808201432228088,
-      "index": 267
+      "index": 266
     },
     {
       "id": "Smith_511",
@@ -3769,7 +3755,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6549363732337952,
-      "index": 268
+      "index": 267
     },
     {
       "id": "Smith_512",
@@ -3783,7 +3769,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7874906063079834,
-      "index": 269
+      "index": 268
     },
     {
       "id": "Smith_522",
@@ -3797,7 +3783,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9556056261062622,
-      "index": 270
+      "index": 269
     },
     {
       "id": "Smith_524",
@@ -3811,7 +3797,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.930447518825531,
-      "index": 271
+      "index": 270
     },
     {
       "id": "Smith_525",
@@ -3825,7 +3811,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5389837026596069,
-      "index": 272
+      "index": 271
     },
     {
       "id": "Smith_527",
@@ -3839,7 +3825,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9479489922523499,
-      "index": 273
+      "index": 272
     },
     {
       "id": "Smith_528",
@@ -3853,7 +3839,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9755492210388184,
-      "index": 274
+      "index": 273
     },
     {
       "id": "Smith_529",
@@ -3867,7 +3853,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6730273365974426,
-      "index": 275
+      "index": 274
     },
     {
       "id": "Smith_530",
@@ -3881,7 +3867,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.40314868092536926,
-      "index": 276
+      "index": 275
     },
     {
       "id": "Smith_532",
@@ -3895,7 +3881,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.6703566908836365,
-      "index": 277
+      "index": 276
     },
     {
       "id": "Smith_534",
@@ -3909,7 +3895,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9398307800292969,
-      "index": 278
+      "index": 277
     },
     {
       "id": "Smith_535",
@@ -3923,7 +3909,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9021902084350586,
-      "index": 279
+      "index": 278
     },
     {
       "id": "Smith_536",
@@ -3937,7 +3923,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.670894205570221,
-      "index": 280
+      "index": 279
     },
     {
       "id": "Smith_539",
@@ -3951,7 +3937,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.4891410171985626,
-      "index": 281
+      "index": 280
     },
     {
       "id": "Smith_543",
@@ -3965,7 +3951,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.5987915992736816,
-      "index": 282
+      "index": 281
     },
     {
       "id": "Smith_544",
@@ -3979,7 +3965,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.7627147436141968,
-      "index": 283
+      "index": 282
     },
     {
       "id": "Smith_545",
@@ -3993,7 +3979,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9033674597740173,
-      "index": 284
+      "index": 283
     },
     {
       "id": "Smith_547",
@@ -4007,7 +3993,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.934825599193573,
-      "index": 285
+      "index": 284
     },
     {
       "id": "Smith_550",
@@ -4021,7 +4007,7 @@
       "source_pdf": "",
       "image_type": "decorated_vessel",
       "image_type_confidence": 0.9553987383842468,
-      "index": 286
+      "index": 285
     }
   ]
 }

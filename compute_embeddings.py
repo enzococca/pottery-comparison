@@ -3,7 +3,7 @@
 
 For every items row whose image_type belongs to the kept set, run the
 shared preprocess_for_dinov2 pipeline (bbox crop → silhouette mask →
-valid_patch_mask), forward DINOv2-small with output_hidden_states, and
+valid_patch_mask), forward DINOv2-small and read last_hidden_state, and
 store three tensors:
 
 - cls_embeddings    (N, 384)         fp32, normalized
@@ -18,7 +18,6 @@ import os
 import json
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -31,7 +30,7 @@ from preprocess import preprocess_for_dinov2, ink_density
 DB_PATH = "ceramica.db"
 OUTPUT_DIR = "ml_model"
 EMBEDDINGS_FILE = os.path.join(OUTPUT_DIR, "image_embeddings_v3.npz")
-METADATA_FILE   = os.path.join(OUTPUT_DIR, "embeddings_metadata_v3.json")
+METADATA_FILE = os.path.join(OUTPUT_DIR, "embeddings_metadata_v3.json")
 DINOV2_MODEL_ID = "facebook/dinov2-small"
 
 # Search-time filter rule (mirrored in viewer_app.py).
@@ -113,6 +112,14 @@ def main():
                 continue
 
             final_img, valid_mask = preprocess_for_dinov2(raw)
+
+            if not valid_mask.any():
+                # No content patches survive the silhouette mask + density
+                # check (e.g., a profile-only drawing whose bbox-cropped
+                # decoration interior is all blank). Rerank would produce
+                # NaN / division by zero.
+                skipped_density += 1
+                continue
 
             inputs = processor(images=final_img, return_tensors="pt").to(device)
             out = model(**inputs)
