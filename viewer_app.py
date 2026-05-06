@@ -26,6 +26,7 @@ import http.cookies
 from datetime import datetime
 import base64
 import io
+from preprocess import bbox_crop, preprocess_for_dinov2
 
 # PDF Scale extraction (lazy loaded)
 def extract_scale_from_pdf(pdf_path, page_num=None):
@@ -93,14 +94,19 @@ ML_MODEL = None       # v2 classifier (used by /api/ml/classify and /api/ml/expl
 ML_ENCODERS = None
 ML_TRANSFORM = None
 
-# Image Similarity Search uses DINOv2-small (Meta self-supervised ViT) loaded
-# lazily on first /api/ml/similar call. CLS token = 384-dim embedding.
-DINOV2_MODEL = None
+# ===== Embeddings (v3 = decoration-focused; v2 = legacy CLS-only) =====
+EMBEDDINGS_VERSION = 0          # 0 = not loaded, 2 = v2, 3 = v3
+EMBEDDINGS_METADATA = None
+EMBEDDINGS_CLS = None           # (N, 384) fp32 normalized — v2 OR v3
+EMBEDDINGS_MEAN = None          # (N, 384) fp32 normalized — v3 only
+EMBEDDINGS_PATCH = None         # (N, 256, 384) fp16 — v3 only
+EMBEDDINGS_VALID = None         # (N, 256) bool — v3 only
+EMBEDDINGS_TYPE_KEEP = None     # (N,) bool: True if image_type passes filter — v3 only
+
 DINOV2_PROCESSOR = None
+DINOV2_MODEL = None
 DINOV2_MODEL_ID = "facebook/dinov2-small"
 
-EMBEDDINGS = None
-EMBEDDINGS_METADATA = None
 ML_DISABLED = False  # Set to True if ML fails to load (memory issues)
 
 # Configuration
@@ -702,179 +708,206 @@ def load_dinov2():
 
 
 def load_embeddings():
-    """Load pre-computed DINOv2 image embeddings for similarity search.
+    """Load v3 if available, else v2. Returns True on success.
 
-    Embeddings are produced by compute_embeddings.py from DINOv2-small's
-    CLS token (384-dim). Query-time embedding extraction goes through
-    load_dinov2(); we no longer touch the v2 classifier here so /api/ml/
-    classify and /api/ml/explain remain independent.
+    v3 layout: cls + mean + patch + valid_patch_masks. Search uses mean
+    coarse rank + patch rerank.
+
+    v2 fallback: cls only. Search uses cls cosine. No image_type filter.
     """
-    global EMBEDDINGS, EMBEDDINGS_METADATA, ML_DISABLED
+    global EMBEDDINGS_VERSION, EMBEDDINGS_METADATA, EMBEDDINGS_CLS, EMBEDDINGS_MEAN
+    global EMBEDDINGS_PATCH, EMBEDDINGS_VALID, EMBEDDINGS_TYPE_KEEP, ML_DISABLED
 
-    if EMBEDDINGS is not None:
+    if EMBEDDINGS_VERSION:
         return True
-
-    embeddings_path = ML_MODEL_DIR / "image_embeddings.npz"
-    metadata_path = ML_MODEL_DIR / "embeddings_metadata.json"
-
-    if not embeddings_path.exists() or not metadata_path.exists():
-        print("Embeddings not found. Run compute_embeddings.py first.")
+    if ML_DISABLED:
         return False
 
-    try:
-        import gc
-        gc.collect()
-        import torch
-        torch.set_num_threads(1)
+    import numpy as np
+    base = Path(__file__).parent / "ml_model"
+    v3_npz = base / "image_embeddings_v3.npz"
+    v3_meta = base / "embeddings_metadata_v3.json"
+    v2_npz = base / "image_embeddings.npz"
+    v2_meta = base / "embeddings_metadata.json"
 
-        print("   Loading embeddings from disk...")
-        data = np.load(embeddings_path)
-        EMBEDDINGS = data['embeddings']
-        print(f"   Loaded {len(EMBEDDINGS)} embeddings (dim={EMBEDDINGS.shape[1]})")
+    if v3_npz.exists() and v3_meta.exists():
+        try:
+            with open(v3_meta) as f:
+                EMBEDDINGS_METADATA = json.load(f)
+            d = np.load(v3_npz)
+            EMBEDDINGS_CLS   = d["cls_embeddings"].astype(np.float32)
+            EMBEDDINGS_MEAN  = d["mean_embeddings"].astype(np.float32)
+            EMBEDDINGS_PATCH = d["patch_embeddings"]    # fp16
+            EMBEDDINGS_VALID = d["valid_patch_masks"].astype(bool)
+            kept = []
+            for it in EMBEDDINGS_METADATA["items"]:
+                t = it.get("image_type", "")
+                c = float(it.get("image_type_confidence", 0.0))
+                kept.append(t in {"decorated_vessel", "decoration_only"}
+                            or (t == "unclassified" and c < 0.4))
+            EMBEDDINGS_TYPE_KEEP = np.array(kept, dtype=bool)
+            EMBEDDINGS_VERSION = 3
+            print(f"   Loaded v3 embeddings: {len(EMBEDDINGS_METADATA['items'])} items "
+                  f"({int(EMBEDDINGS_TYPE_KEEP.sum())} pass image_type filter)")
+            return True
+        except Exception as e:
+            print(f"   v3 load failed: {e!r} — falling back to v2")
 
-        with open(metadata_path) as f:
-            EMBEDDINGS_METADATA = json.load(f)
+    if v2_npz.exists() and v2_meta.exists():
+        try:
+            with open(v2_meta) as f:
+                EMBEDDINGS_METADATA = json.load(f)
+            d = np.load(v2_npz)
+            EMBEDDINGS_CLS = d["embeddings"].astype(np.float32)
+            EMBEDDINGS_VERSION = 2
+            print(f"   Loaded v2 embeddings: {len(EMBEDDINGS_METADATA['items'])} items "
+                  f"(legacy CLS-only path)")
+            return True
+        except Exception as e:
+            print(f"   v2 load failed: {e!r}")
 
-        if not load_dinov2():
-            print("   DINOv2 not available; similarity search disabled")
-            ML_DISABLED = True
-            return False
-
-        gc.collect()
-        print(f"   Similarity search ready with {len(EMBEDDINGS)} images "
-              f"(features: {DINOV2_MODEL_ID})")
-        return True
-
-    except MemoryError as e:
-        ML_DISABLED = True
-        print(f"Memory error loading embeddings: {e}")
-        print("   ML similarity search has been disabled due to memory constraints")
-        return False
-    except Exception as e:
-        ML_DISABLED = True
-        print(f"Error loading embeddings: {e}")
-        print("   ML similarity search has been disabled")
-        import traceback
-        traceback.print_exc()
-        return False
+    ML_DISABLED = True
+    return False
 
 
-def _content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=0.02):
-    """Crop a PIL image to its non-white content bbox.
-
-    Mirrors compute_embeddings.content_bbox_crop so query and corpus are
-    preprocessed symmetrically (Issue B in similarity search).
-    """
-    from PIL import Image as _PILImage  # local import; PIL imported in callers
-    arr = np.asarray(img.convert('L'))
-    h, w = arr.shape
-    mask = arr < white_thresh
-    if not mask.any():
-        return img
-    ys, xs = np.where(mask)
-    y0, y1 = int(ys.min()), int(ys.max())
-    x0, x1 = int(xs.min()), int(xs.max())
-    bbox_w = x1 - x0
-    bbox_h = y1 - y0
-    if bbox_w * bbox_h < min_area_ratio * w * h:
-        return img
-    pad_x = int(bbox_w * padding_ratio)
-    pad_y = int(bbox_h * padding_ratio)
-    x0 = max(0, x0 - pad_x)
-    y0 = max(0, y0 - pad_y)
-    x1 = min(w - 1, x1 + pad_x)
-    y1 = min(h - 1, y1 + pad_y)
-    return img.crop((x0, y0, x1 + 1, y1 + 1))
+def _content_bbox_crop(img):
+    """Backwards-compat wrapper; new code uses preprocess.bbox_crop directly."""
+    from preprocess import bbox_crop
+    return bbox_crop(img)
 
 
 def find_similar_images(image_data, top_k=20, threshold=0.5):
-    """Find visually similar images using cosine similarity over DINOv2-small
-    embeddings (CLS token of facebook/dinov2-small)."""
+    """Decoration-focused similarity search.
+
+    v3 path:
+      1. Preprocess query (bbox+silhouette mask) → DINOv2 → mean_q,
+         patches_q, valid_q.
+      2. Filter corpus by image_type (precomputed EMBEDDINGS_TYPE_KEEP).
+      3. Coarse rank by cosine(mean_q, mean_embeddings) → top-50.
+      4. Patch-level Chamfer rerank on those 50:
+           for each valid query patch q_i, max cosine with valid candidate
+           patches; mean of top-min(64, |valid_q|) max-sims.
+      5. Return top-k after rerank.
+
+    v2 path (fallback): cosine on cls embeddings only, no rerank, no
+    image_type filter.
+    """
     global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
     if ML_DISABLED:
-        return {'error': 'ML features are disabled due to memory constraints. Please try again later or use a server with more memory.'}
+        return {"error": "ML features are disabled", "similar_items": []}
+    if not load_embeddings():
+        return {"error": "Embeddings not available", "similar_items": []}
+    if not load_dinov2():
+        return {"error": "DINOv2 not available", "similar_items": []}
 
-    if not load_embeddings() or DINOV2_MODEL is None:
-        return {'error': 'Embeddings not available'}
+    import torch
+    import numpy as np
+    from PIL import Image
 
-    try:
-        import torch
-        from PIL import Image
+    # Decode query
+    if "," in image_data:
+        image_data = image_data.split(",")[1]
+    q_bytes = base64.b64decode(image_data)
+    raw = Image.open(io.BytesIO(q_bytes)).convert("RGB")
 
-        # Decode image
-        if ',' in image_data:
-            image_data = image_data.split(',')[1]
+    final_img, valid_q = preprocess_for_dinov2(raw)
 
-        image_bytes = base64.b64decode(image_data)
-        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        img = _content_bbox_crop(img)
+    inputs = DINOV2_PROCESSOR(images=final_img, return_tensors="pt")
+    with torch.no_grad():
+        out = DINOV2_MODEL(**inputs)
+        hidden = out.last_hidden_state[0]                  # (257, 384)
+        cls_q = hidden[0]
+        patches_q_t = hidden[1:]                           # (256, 384)
+        mean_q_t = patches_q_t.mean(dim=0)
+    cls_q = (cls_q / (cls_q.norm() + 1e-8)).cpu().numpy().astype(np.float32)
+    mean_q = (mean_q_t / (mean_q_t.norm() + 1e-8)).cpu().numpy().astype(np.float32)
+    patches_q = patches_q_t.cpu().numpy().astype(np.float32)
 
-        # Extract embedding via DINOv2 (matches the corpus pipeline).
-        inputs = DINOV2_PROCESSOR(images=img, return_tensors='pt')
-        with torch.no_grad():
-            outputs = DINOV2_MODEL(**inputs)
-            query_embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
-            query_embedding = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
+    items = EMBEDDINGS_METADATA["items"]
 
-        # Compute cosine similarities
-        similarities = np.dot(EMBEDDINGS, query_embedding)
+    if EMBEDDINGS_VERSION == 2:
+        sims = EMBEDDINGS_CLS @ cls_q
+        order = np.argsort(-sims)[:top_k]
+        results = []
+        for idx in order:
+            s = float(sims[idx])
+            if s < threshold:
+                continue
+            it = dict(items[idx])
+            it["similarity"] = round(s * 100.0, 1)
+            results.append(it)
+        return {"similar_items": results, "total_corpus": len(items),
+                "version": 2}
 
-        # Get top matches
-        top_indices = np.argsort(similarities)[::-1][:top_k]
+    # ---- v3 path ----
+    keep = EMBEDDINGS_TYPE_KEEP
+    coarse = (EMBEDDINGS_MEAN @ mean_q)                    # (N,)
+    coarse_masked = np.where(keep, coarse, -np.inf)
+    n_keep = int(keep.sum())
+    n_top = min(50, n_keep) if n_keep > 0 else 0
+    if n_top == 0:
+        return {"similar_items": [], "total_corpus": 0, "version": 3,
+                "below_threshold_fallback": False, "max_similarity": 0.0,
+                "threshold_pct": round(threshold * 100.0, 1)}
 
-        def _build_item(idx, sim_score):
-            item_meta = EMBEDDINGS_METADATA['items'][idx]
-            return {
-                'id': item_meta['id'],
-                'image_path': item_meta['image_path'],
-                'macro_period': item_meta['macro_period'],
-                'period': item_meta['period'],
-                'decoration': item_meta['decoration'],
-                'vessel_type': item_meta['vessel_type'],
-                'collection': item_meta['collection'],
-                'page_ref': item_meta['page_ref'],
-                'source_pdf': item_meta['source_pdf'],
-                'similarity': round(sim_score * 100, 1),
-            }
+    top50_idx = np.argpartition(-coarse_masked, n_top - 1)[:n_top]
+    top50_idx = top50_idx[np.argsort(-coarse_masked[top50_idx])]
 
-        # Build results above threshold
-        similar_items = []
-        for idx in top_indices:
-            sim_score = float(similarities[idx])
-            if sim_score >= threshold:
-                similar_items.append(_build_item(idx, sim_score))
+    if not valid_q.any():
+        rerank_scores = coarse[top50_idx]
+    else:
+        q_valid_idx = np.where(valid_q)[0]
+        q_valid = patches_q[q_valid_idx]
+        q_valid_norm = q_valid / (np.linalg.norm(q_valid, axis=1, keepdims=True) + 1e-8)
+        K = min(64, len(q_valid))
+        rerank_scores = np.empty(len(top50_idx), dtype=np.float32)
+        for ri, idx in enumerate(top50_idx):
+            c_patches = EMBEDDINGS_PATCH[idx].astype(np.float32)
+            c_valid_idx = np.where(EMBEDDINGS_VALID[idx])[0]
+            if len(c_valid_idx) == 0:
+                rerank_scores[ri] = coarse[idx]
+                continue
+            c_valid = c_patches[c_valid_idx]
+            c_valid_norm = c_valid / (np.linalg.norm(c_valid, axis=1, keepdims=True) + 1e-8)
+            sim_mat = q_valid_norm @ c_valid_norm.T
+            best_per_q = sim_mat.max(axis=1)
+            top = np.partition(-best_per_q, K - 1)[:K]
+            rerank_scores[ri] = float(-top.mean())
 
-        # Fallback (Issue C): if nothing passes threshold, return top 5 anyway
-        below_threshold_fallback = False
-        if not similar_items:
-            fallback_n = min(5, len(top_indices))
-            for idx in top_indices[:fallback_n]:
-                sim_score = float(similarities[idx])
-                item = _build_item(idx, sim_score)
-                item['below_threshold'] = True
-                similar_items.append(item)
-            below_threshold_fallback = True
+    order = np.argsort(-rerank_scores)
+    final = []
+    for ri in order[:top_k]:
+        idx = int(top50_idx[ri])
+        rerank_s = float(rerank_scores[ri])
+        coarse_s = float(coarse[idx])
+        if rerank_s < threshold:
+            continue
+        it = dict(items[idx])
+        it["similarity"] = round(rerank_s * 100.0, 1)
+        it["coarse_similarity"] = round(coarse_s * 100.0, 1)
+        it["image_type"] = items[idx].get("image_type", "")
+        final.append(it)
 
-        max_similarity = round(float(similarities[top_indices[0]]) * 100, 1) if len(top_indices) else 0.0
+    below_threshold_fallback = False
+    if not final and len(top50_idx) > 0:
+        below_threshold_fallback = True
+        for ri in order[:5]:
+            idx = int(top50_idx[ri])
+            it = dict(items[idx])
+            it["similarity"] = round(float(rerank_scores[ri]) * 100.0, 1)
+            it["coarse_similarity"] = round(float(coarse[idx]) * 100.0, 1)
+            it["image_type"] = items[idx].get("image_type", "")
+            it["below_threshold"] = True
+            final.append(it)
 
-        # Generate analysis
-        analysis = generate_similarity_analysis(similar_items)
-
-        return {
-            'success': True,
-            'similar_items': similar_items,
-            'total_compared': len(EMBEDDINGS),
-            'analysis': analysis,
-            'statistics': compute_similarity_statistics(similar_items),
-            'below_threshold_fallback': below_threshold_fallback,
-            'max_similarity': max_similarity,
-            'threshold_pct': round(threshold * 100, 1),
-        }
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {'error': str(e)}
+    return {
+        "similar_items": final,
+        "total_corpus": int(keep.sum()),
+        "below_threshold_fallback": below_threshold_fallback,
+        "max_similarity": round(float(rerank_scores.max() * 100.0), 1) if len(rerank_scores) else 0.0,
+        "threshold_pct": round(threshold * 100.0, 1),
+        "version": 3,
+    }
 
 
 # Module-level lock around heatmap computation. Hook-based Grad-CAM mutates
@@ -4816,7 +4849,7 @@ def get_viewer_html(role):
                     </button>
                 </div>
                 <p style="color: #888; font-size: 0.85em; margin-bottom: 15px;">
-                    Ranked by visual similarity based on decoration patterns
+                    Ranked by decoration similarity (vessel shape ignored)
                 </p>
                 <div class="ml-matches-grid" id="mlMatchesGrid">
                     <p style="color: #666; text-align: center; grid-column: 1/-1;">
@@ -6567,7 +6600,7 @@ def get_viewer_html(role):
                     </div>
                     <div class="match-id">${{item.id}}</div>
                     <div class="match-period">${{item.macro_period || item.period || 'N/A'}}</div>
-                    <div class="match-confidence">${{item.similarity}}% similar${{item.below_threshold ? ' <span style=&quot;color:#b8860b&quot;>(sotto soglia)</span>' : ''}}</div>
+                    <div class="match-confidence" title="Coarse global similarity (whole-image, shape-aware): ${{item.coarse_similarity || '-'}}%">${{item.similarity}}% similar (decoration)${{item.below_threshold ? ' <span style=&quot;color:#b8860b&quot;>(sotto soglia)</span>' : ''}}</div>
                     <div class="heatmap-block">
                         <img class="heatmap-overlay" src="" alt="similarity heatmap on the match">
                         <div class="heatmap-label">questo match &middot; zone che guidano la similarit&agrave; con la tua immagine</div>
