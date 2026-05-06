@@ -723,6 +723,10 @@ def load_embeddings():
     if ML_DISABLED:
         return False
 
+    import gc, torch  # restore Railway OOM mitigation
+    gc.collect()
+    torch.set_num_threads(1)
+
     import numpy as np
     base = Path(__file__).parent / "ml_model"
     v3_npz = base / "image_embeddings_v3.npz"
@@ -772,7 +776,6 @@ def load_embeddings():
 
 def _content_bbox_crop(img):
     """Backwards-compat wrapper; new code uses preprocess.bbox_crop directly."""
-    from preprocess import bbox_crop
     return bbox_crop(img)
 
 
@@ -826,22 +829,38 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
     items = EMBEDDINGS_METADATA["items"]
 
     if EMBEDDINGS_VERSION == 2:
-        sims = EMBEDDINGS_CLS @ cls_q
-        order = np.argsort(-sims)[:top_k]
+        sims = np.dot(EMBEDDINGS_CLS, cls_q)
+        order = np.argsort(-sims)
         results = []
-        for idx in order:
+        for idx in order[:top_k]:
             s = float(sims[idx])
             if s < threshold:
                 continue
             it = dict(items[idx])
             it["similarity"] = round(s * 100.0, 1)
             results.append(it)
-        return {"similar_items": results, "total_corpus": len(items),
-                "version": 2}
+        # Below-threshold fallback: if nothing cleared the bar, surface the
+        # top-5 anyway with a flag so the UI can warn the user.
+        below_threshold_fallback = False
+        if not results and len(order) > 0:
+            below_threshold_fallback = True
+            for idx in order[:5]:
+                it = dict(items[idx])
+                it["similarity"] = round(float(sims[idx]) * 100.0, 1)
+                it["below_threshold"] = True
+                results.append(it)
+        return {
+            "similar_items": results,
+            "total_corpus": len(items),
+            "below_threshold_fallback": below_threshold_fallback,
+            "max_similarity": round(float(sims.max()) * 100.0, 1) if len(sims) else 0.0,
+            "threshold_pct": round(threshold * 100.0, 1),
+            "version": 2,
+        }
 
     # ---- v3 path ----
     keep = EMBEDDINGS_TYPE_KEEP
-    coarse = (EMBEDDINGS_MEAN @ mean_q)                    # (N,)
+    coarse = np.dot(EMBEDDINGS_MEAN, mean_q)               # (N,)
     coarse_masked = np.where(keep, coarse, -np.inf)
     n_keep = int(keep.sum())
     n_top = min(50, n_keep) if n_keep > 0 else 0
@@ -869,7 +888,7 @@ def find_similar_images(image_data, top_k=20, threshold=0.5):
                 continue
             c_valid = c_patches[c_valid_idx]
             c_valid_norm = c_valid / (np.linalg.norm(c_valid, axis=1, keepdims=True) + 1e-8)
-            sim_mat = q_valid_norm @ c_valid_norm.T
+            sim_mat = np.dot(q_valid_norm, c_valid_norm.T)
             best_per_q = sim_mat.max(axis=1)
             top = np.partition(-best_per_q, K - 1)[:K]
             rerank_scores[ri] = float(-top.mean())
@@ -933,8 +952,10 @@ def similarity_heatmap(query_image_data, match_image_path):
     global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
     if ML_DISABLED:
         return {'error': 'ML features are disabled'}
-    if not load_embeddings() or DINOV2_MODEL is None:
+    if not load_embeddings():
         return {'error': 'Embeddings not available'}
+    if not load_dinov2():
+        return {'error': 'DINOv2 not available'}
 
     try:
         import torch
@@ -6260,7 +6281,7 @@ def get_viewer_html(role):
                 // Stop carousel animation
                 document.getElementById('mlCarousel').classList.add('paused');
                 document.getElementById('mlProgressBar').style.width = '100%';
-                document.getElementById('mlProgressText').textContent = 'Analysis complete! Compared ' + (result.total_compared || 0) + ' images.';
+                document.getElementById('mlProgressText').textContent = 'Analysis complete! Compared ' + (result.total_corpus || result.total_compared || 0) + ' images.';
 
                 // Highlight matched items in carousel
                 highlightMatchesInCarousel(result.similar_items || []);
