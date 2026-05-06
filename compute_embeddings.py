@@ -69,6 +69,27 @@ def content_bbox_crop(img, white_thresh=240, padding_ratio=0.03, min_area_ratio=
     return img.crop((x0, y0, x1 + 1, y1 + 1))
 
 
+# Drop images whose content bbox has fewer than this fraction of dark
+# pixels: those are profile-only / rim-section drawings (just an outline
+# on a white page) that DINOv2 can't tell apart from a hand sketch and
+# pollute the similarity results — even though their `decoration` field
+# in the DB says "painted" because the original vessel was painted.
+PROFILE_ONLY_DENSITY = 0.05
+
+
+def ink_density(pil_img, white_thresh=240):
+    """Fraction of dark pixels inside the image's content bbox."""
+    arr = np.asarray(pil_img.convert('L'))
+    mask = arr < white_thresh
+    if not mask.any():
+        return 0.0
+    ys, xs = np.where(mask)
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    bbox = arr[y0:y1+1, x0:x1+1]
+    return float((bbox < white_thresh).mean())
+
+
 def main():
     # Load DINOv2-small (self-supervised ViT, CLS token = 384-dim)
     print("\n[1/4] Loading DINOv2-small from HuggingFace...")
@@ -110,6 +131,7 @@ def main():
     embeddings = []
     metadata = []
     valid_count = 0
+    skipped_low_density = 0
 
     with torch.no_grad():
         for i, item in enumerate(items):
@@ -122,6 +144,11 @@ def main():
             # Load image and extract DINOv2 CLS embedding
             img_pil = load_image_pil(image_path)
             if img_pil is None:
+                continue
+            # Skip profile-only / rim-section drawings (mostly white).
+            d = ink_density(img_pil)
+            if d < PROFILE_ONLY_DENSITY:
+                skipped_low_density += 1
                 continue
             inputs = processor(images=img_pil, return_tensors='pt').to(device)
             outputs = model(**inputs)
@@ -145,7 +172,8 @@ def main():
             })
             valid_count += 1
 
-    print(f"   Successfully processed {valid_count} images")
+    print(f"   Successfully processed {valid_count} images "
+          f"(skipped {skipped_low_density} profile-only with density < {PROFILE_ONLY_DENSITY})")
 
     # Save embeddings
     print("\n[4/4] Saving embeddings...")
