@@ -888,10 +888,14 @@ def similarity_heatmap(query_image_data, match_image_path):
     drive the cosine similarity with the given match (Issue A), faithful
     to the DINOv2 embedding used for ranking.
 
-    Hooks the last transformer block of DINOv2-small. After backward of
-    cosine(query_emb, match_emb), per-patch saliency = sum(activation *
-    gradient) along the embedding dim, reshaped to a 16x16 grid (16 = 224 /
-    patch_size 14) and resized to the query image.
+    Hooks the PENULTIMATE encoder block of DINOv2-small. The last block
+    then mixes CLS with all patch tokens via self-attention, so backward
+    from cosine(query_cls, match_cls) produces non-zero gradients on every
+    patch. Hooking last_hidden_state directly gives zero patch gradients
+    (post-layernorm doesn't mix tokens). Saliency = ||grad||_2 per patch
+    reshaped to a 16x16 grid (16 = 224 / patch_size 14). Sum-over-hidden
+    aggregations (Grad-CAM-style) collapse to ~0 on ViT because activations
+    aren't ReLU and signed terms cancel.
     """
     global ML_DISABLED, DINOV2_MODEL, DINOV2_PROCESSOR
     if ML_DISABLED:
@@ -921,59 +925,44 @@ def similarity_heatmap(query_image_data, match_image_path):
         match_img = _content_bbox_crop(match_img)
 
         with _SIMILARITY_HEATMAP_LOCK:
-            # Hook the last transformer block: forward saves the per-token
-            # hidden states, backward saves their gradients.
-            last_block = DINOV2_MODEL.encoder.layer[-1]
-            activations = []
-            gradients = []
+            # Match (no grad).
+            m_inputs = DINOV2_PROCESSOR(images=match_img, return_tensors='pt')
+            with torch.no_grad():
+                m_out = DINOV2_MODEL(**m_inputs)
+                m_emb = m_out.last_hidden_state[:, 0, :]
+                m_emb = m_emb / (m_emb.norm() + 1e-8)
 
-            def fwd_hook(_m, _i, out):
-                # transformers DINOv2 returns a tuple: (hidden_states, ...)
-                activations.append(out[0] if isinstance(out, tuple) else out)
+            # Query (with grad). Ask for hidden_states so we can hook the
+            # penultimate block's output via a tensor-level register_hook
+            # (rock-solid; module hooks on Dinov2Layer silently drop grads).
+            q_inputs = DINOV2_PROCESSOR(images=query_img, return_tensors='pt')
+            DINOV2_MODEL.zero_grad()
+            q_out = DINOV2_MODEL(**q_inputs, output_hidden_states=True)
 
-            def bwd_hook(_m, _gi, go):
-                gradients.append(go[0])
+            # hidden_states is (embeddings_out, layer_1_out, ..., layer_N_out).
+            # [-2] = penultimate block output: the last block then mixes
+            # CLS with patches via self-attention so backward produces
+            # non-zero gradients on every patch token.
+            target = q_out.hidden_states[-2]
+            grads_holder = []
+            target.register_hook(lambda g: grads_holder.append(g))
 
-            h_fwd = last_block.register_forward_hook(fwd_hook)
-            h_bwd = last_block.register_full_backward_hook(bwd_hook)
-            try:
-                # Match (no grad)
-                m_inputs = DINOV2_PROCESSOR(images=match_img, return_tensors='pt')
-                with torch.no_grad():
-                    m_out = DINOV2_MODEL(**m_inputs)
-                    m_emb = m_out.last_hidden_state[:, 0, :]
-                    m_emb = m_emb / (m_emb.norm() + 1e-8)
-                # Discard activations recorded during the match forward.
-                activations.clear()
-                gradients.clear()
+            q_emb = q_out.last_hidden_state[:, 0, :]
+            q_emb = q_emb / (q_emb.norm() + 1e-8)
+            sim = (q_emb * m_emb.detach()).sum()
+            sim.backward()
 
-                # Query (with grad)
-                q_inputs = DINOV2_PROCESSOR(images=query_img, return_tensors='pt')
-                # Need gradients to flow — pixel_values on most processors
-                # doesn't require grad by default; we only need grads on the
-                # last block's hidden states, so the hook covers it.
-                q_out = DINOV2_MODEL(**q_inputs)
-                q_emb = q_out.last_hidden_state[:, 0, :]
-                q_emb = q_emb / (q_emb.norm() + 1e-8)
-                sim = (q_emb * m_emb.detach()).sum()
+            if not grads_holder:
+                raise RuntimeError("DINOv2 tensor backward hook did not fire")
 
-                DINOV2_MODEL.zero_grad()
-                sim.backward()
-
-                if not activations or not gradients:
-                    raise RuntimeError("DINOv2 hooks did not capture activations/gradients")
-
-                acts = activations[0].detach()[0]   # (1+P, hidden)
-                grads = gradients[0].detach()[0]    # (1+P, hidden)
-            finally:
-                h_fwd.remove()
-                h_bwd.remove()
+            grads = grads_holder[0].detach()[0]       # (1+P, hidden)
 
         # Drop CLS token, keep patch tokens.
-        patch_acts = acts[1:]
         patch_grads = grads[1:]
-        # Saliency per patch = sum over hidden dim of (act * grad), ReLU.
-        saliency = (patch_acts * patch_grads).sum(dim=1).clamp(min=0)
+        # Saliency per patch = L2 norm of gradient vector. Robust on ViT
+        # where signed Grad-CAM terms cancel out and post-layernorm CLS-only
+        # gradients are zero on patch rows.
+        saliency = patch_grads.norm(dim=1)
 
         n_patches = saliency.shape[0]
         side = int(round(n_patches ** 0.5))
