@@ -14,7 +14,8 @@ def bbox_crop(pil_img, white_thresh=240, padding_ratio=0.03, min_area_ratio=0.02
 
     If the dark-pixel bbox is smaller than `min_area_ratio` of the full image
     (likely a stray speck on an otherwise white page), return the input
-    unchanged.
+    unchanged. Zero-area bboxes (single-row or single-column content) are also
+    treated as specks and returned unchanged.
     """
     arr = np.asarray(pil_img.convert('L'))
     h, w = arr.shape
@@ -71,6 +72,7 @@ def extract_decoration_region(pil_img, white_thresh=240, erode_px_ratio=0.03):
     - or the silhouette has no inner area after erosion (profile-only
       drawing — `image_type` will drop these later).
     """
+    pil_img = pil_img.convert('RGB')
     arr_gray = np.asarray(pil_img.convert('L'))
     arr_rgb = np.asarray(pil_img.convert('RGB'))
     h, w = arr_gray.shape
@@ -126,7 +128,7 @@ def preprocess_for_dinov2(pil_img):
     masked output (so DINOv2 doesn't waste resolution on white margins) →
     valid_patch_mask on the final image.
 
-    Returns (final_pil, valid_patch_mask).
+    Returns (final_pil, patch_mask).
     """
     cropped = bbox_crop(pil_img)
     masked = extract_decoration_region(cropped)
