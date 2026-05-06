@@ -1,4 +1,4 @@
-"""One-shot classifier: assign every items.image_path to one of 5
+"""One-shot classifier: assign every items.image_path to one of 6
 image_type labels using CLIP ViT-B/32 zero-shot, write the chosen label
 plus its softmax confidence back to the DB.
 
