@@ -1331,6 +1331,48 @@ def migrate_annotations_table(conn):
     conn.commit()
 
 
+def create_annotation(conn, user_id, image_data, note_text, results_json):
+    cur = conn.execute(
+        "INSERT INTO comparison_annotations (user_id, image_data, note_text, results_json) VALUES (?, ?, ?, ?)",
+        (user_id, image_data, note_text, results_json),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_annotations(conn, user_id):
+    rows = conn.execute(
+        """SELECT id, note_text, results_json, created_at FROM comparison_annotations
+           WHERE user_id = ? ORDER BY created_at DESC, id DESC""",
+        (user_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            count = len(json.loads(r["results_json"])) if r["results_json"] else 0
+        except (ValueError, TypeError):
+            count = 0
+        out.append({"id": r["id"], "note_text": r["note_text"],
+                    "created_at": r["created_at"], "result_count": count})
+    return out
+
+
+def get_annotation(conn, annotation_id, user_id):
+    return conn.execute(
+        "SELECT * FROM comparison_annotations WHERE id = ? AND user_id = ?",
+        (annotation_id, user_id),
+    ).fetchone()
+
+
+def delete_annotation(conn, annotation_id, user_id):
+    cur = conn.execute(
+        "DELETE FROM comparison_annotations WHERE id = ? AND user_id = ?",
+        (annotation_id, user_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def migrate_users_table(conn):
     """Idempotently bring the users table up to the per-account schema."""
     cursor = conn.cursor()
