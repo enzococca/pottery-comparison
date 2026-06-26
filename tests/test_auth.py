@@ -43,3 +43,34 @@ def test_role_allows_hierarchy():
 def test_role_allows_anonymous():
     assert viewer_app.role_allows('iscritto', None) is False
     assert viewer_app.role_allows('iscritto', 'sconosciuto') is False
+
+
+import sqlite3
+
+
+def _fresh_conn():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def test_migrate_users_table_adds_columns():
+    conn = _fresh_conn()
+    # vecchia forma della tabella (come nel DB committato)
+    conn.execute("""CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'viewer',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    viewer_app.migrate_users_table(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    assert {'email', 'status', 'approved_at', 'approved_by', 'last_login'} <= cols
+
+
+def test_migrate_users_table_idempotent():
+    conn = _fresh_conn()
+    viewer_app.migrate_users_table(conn)  # crea da zero
+    viewer_app.migrate_users_table(conn)  # secondo giro: nessun errore
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    assert 'email' in cols

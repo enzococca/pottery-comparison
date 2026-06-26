@@ -1318,6 +1318,35 @@ def init_db():
     conn.close()
 
 
+def migrate_users_table(conn):
+    """Idempotently bring the users table up to the per-account schema."""
+    cursor = conn.cursor()
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'iscritto',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    cursor.execute("PRAGMA table_info(users)")
+    existing = {row[1] for row in cursor.fetchall()}
+    new_columns = [
+        ("email", "TEXT"),
+        ("status", "TEXT DEFAULT 'pending'"),
+        ("approved_at", "TIMESTAMP"),
+        ("approved_by", "TEXT"),
+        ("last_login", "TIMESTAMP"),
+    ]
+    for col_name, col_def in new_columns:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+    # Unique partial index on email (ignores NULL legacy rows)
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+    )
+    conn.commit()
+
+
 def run_auto_migrations():
     """Run database migrations automatically on startup"""
     print("   Checking for database migrations...")
@@ -1380,6 +1409,9 @@ def run_auto_migrations():
             INSERT OR IGNORE INTO vocabulary (field, value, count)
             VALUES (?, ?, 0)
         ''', (field, value))
+
+    # Migrazione tabella users (account per-utente)
+    migrate_users_table(conn)
 
     conn.commit()
     conn.close()
