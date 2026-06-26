@@ -3523,6 +3523,8 @@ def get_viewer_html(role):
     ''' if is_admin else ''
 
     annotations_js = '''
+        function annEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
         function saveAnnotation() {
             var image = manualDrawingData || mlImageData;
             if (!image) { alert('Carica e confronta prima un\\'immagine'); return; }
@@ -3538,6 +3540,107 @@ def get_viewer_html(role):
               })
               .catch(function(e) { alert('Errore di rete: ' + e); });
         }
+
+        function openMyAnnotations() {
+            document.getElementById('myAnnotationsModal').classList.add('active');
+            loadAnnotations();
+        }
+
+        function loadAnnotations() {
+            var container = document.getElementById('annotationsList');
+            container.innerHTML = 'Caricamento...';
+            document.getElementById('annotationDetail').innerHTML = '';
+            fetch('/api/annotations')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var list = data.annotations || [];
+                    if (!list.length) {
+                        container.innerHTML = '<em style="color:#888;">Nessuna annotazione salvata.</em>';
+                        return;
+                    }
+                    var html = '';
+                    list.forEach(function(a) {
+                        html += '<div style="border-bottom:1px solid #333;padding:10px 0;display:flex;align-items:center;gap:10px;">';
+                        html += '<div style="flex:1;">';
+                        html += '<div style="font-size:0.95em;margin-bottom:3px;">' + annEsc(a.note_text || '(senza nota)') + '</div>';
+                        html += '<div style="font-size:0.8em;color:#888;">' + annEsc(a.created_at || '') + ' &nbsp;&middot;&nbsp; ' + a.result_count + ' match</div>';
+                        html += '</div>';
+                        html += '<button onclick="openAnnotation(' + Number(a.id) + ')" style="background:#2196f3;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Apri</button>';
+                        html += '<button onclick="reuseAnnotation(' + Number(a.id) + ')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Riusa</button>';
+                        html += '<button onclick="deleteAnnotation(' + Number(a.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                        html += '</div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(function(e) {
+                    container.innerHTML = '<em style="color:#f44336;">Errore di rete: ' + annEsc(String(e)) + '</em>';
+                });
+        }
+
+        function openAnnotation(id) {
+            var detail = document.getElementById('annotationDetail');
+            detail.innerHTML = 'Caricamento...';
+            fetch('/api/annotations/' + id)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var html = '<div style="margin-top:16px;border-top:1px solid #444;padding-top:16px;">';
+                    html += '<h4 style="margin-bottom:8px;">Dettaglio annotazione</h4>';
+                    html += '<img src="' + d.image_data + '" style="max-width:200px;max-height:200px;object-fit:contain;border:1px solid #444;border-radius:4px;margin-bottom:8px;">';
+                    html += '<p style="margin-bottom:8px;color:#ccc;">' + annEsc(d.note_text || '(senza nota)') + '</p>';
+                    if (d.results && d.results.length) {
+                        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
+                        d.results.forEach(function(m) {
+                            html += '<div style="text-align:center;font-size:0.75em;">';
+                            html += '<img src="' + annEsc(m.image_path || '') + '" style="width:60px;height:60px;object-fit:contain;border:1px solid #333;border-radius:3px;display:block;">';
+                            html += '<div>' + annEsc(m.id || '') + '</div>';
+                            html += '<div style="color:#4fc3f7;">' + (m.similarity != null ? m.similarity + '%' : '') + '</div>';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    detail.innerHTML = html;
+                })
+                .catch(function(e) {
+                    detail.innerHTML = '<em style="color:#f44336;">Errore: ' + annEsc(String(e)) + '</em>';
+                });
+        }
+
+        function reuseAnnotation(id) {
+            fetch('/api/annotations/' + id)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    mlImageData = d.image_data;
+                    var preview = document.getElementById('mlPreview');
+                    if (preview) preview.src = d.image_data;
+                    closeModal('myAnnotationsModal');
+                    openMlClassifier();
+                    runSimilaritySearch();
+                })
+                .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function deleteAnnotation(id) {
+            if (!confirm('Eliminare questa annotazione?')) return;
+            fetch('/api/annotations/' + id, {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function() { loadAnnotations(); })
+                .catch(function(e) { alert('Errore: ' + e); });
+        }
+    ''' if is_member else ''
+
+    # Member-only annotations panel modal (plain string — no f-string — so JS braces are literal)
+    annotations_modal = '''
+    <div class="modal-overlay" id="myAnnotationsModal" style="z-index:25000;">
+        <div class="modal" style="max-width:700px;width:95%;max-height:80vh;overflow-y:auto;">
+            <h2 style="margin-bottom:16px;">&#128193; Le mie annotazioni</h2>
+            <div id="annotationsList" style="min-height:60px;">Caricamento...</div>
+            <div id="annotationDetail"></div>
+            <div style="margin-top:20px;text-align:right;">
+                <button class="modal-btn cancel" onclick="closeModal(\'myAnnotationsModal\')">Chiudi</button>
+            </div>
+        </div>
+    </div>
     ''' if is_member else ''
 
     return f'''<!DOCTYPE html>
@@ -5404,6 +5507,8 @@ def get_viewer_html(role):
 
     {user_management_modal}
 
+    {annotations_modal}
+
     <!-- PDF Viewer Modal -->
     <div class="pdf-modal" id="pdfModal">
         <div class="pdf-header">
@@ -5643,6 +5748,7 @@ def get_viewer_html(role):
                     </p>
                 </div>
                 {'<button class="action-btn" onclick="saveAnnotation()" style="margin-top:10px;">&#128190; Salva annotazione</button>' if is_member else ''}
+                {'<button class="action-btn" onclick="openMyAnnotations()" style="margin-top:10px;">&#128193; Le mie annotazioni</button>' if is_member else ''}
             </div>
         </div>
     </div>
