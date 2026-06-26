@@ -1727,6 +1727,14 @@ def verify_password_salted(password, stored):
         return False
 
 
+ROLE_RANK = {'iscritto': 1, 'editor': 2, 'admin': 3}
+
+
+def role_allows(min_role, current_role):
+    """True se current_role ha rango >= min_role. None/sconosciuto -> False."""
+    return ROLE_RANK.get(current_role, 0) >= ROLE_RANK.get(min_role, 99)
+
+
 def verify_credentials(password):
     """Verify password and return role"""
     pwd_hash = hash_password(password)
