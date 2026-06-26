@@ -118,3 +118,10 @@ def test_list_and_delete_user():
     assert any(u["email"] == "a@example.com" for u in viewer_app.list_users(conn))
     assert viewer_app.delete_user(conn, uid) is True
     assert viewer_app.get_user_by_id(conn, uid) is None
+
+
+def test_mutators_return_false_for_missing_user():
+    conn = _migrated_conn()
+    assert viewer_app.set_user_status(conn, 99999, "approved") is False
+    assert viewer_app.set_user_role(conn, 99999, "editor") is False
+    assert viewer_app.delete_user(conn, 99999) is False

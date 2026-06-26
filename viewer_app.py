@@ -1376,26 +1376,26 @@ def list_users(conn):
 
 def set_user_status(conn, user_id, status, approved_by=None):
     if status == 'approved':
-        conn.execute(
+        cur = conn.execute(
             "UPDATE users SET status = ?, approved_at = CURRENT_TIMESTAMP, approved_by = ? WHERE id = ?",
             (status, approved_by, user_id),
         )
     else:
-        conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+        cur = conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
     conn.commit()
-    return conn.total_changes > 0
+    return cur.rowcount > 0
 
 
 def set_user_role(conn, user_id, role):
-    conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+    cur = conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
     conn.commit()
-    return conn.total_changes > 0
+    return cur.rowcount > 0
 
 
 def delete_user(conn, user_id):
-    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
-    return conn.total_changes > 0
+    return cur.rowcount > 0
 
 
 def touch_last_login(conn, user_id):
