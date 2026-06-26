@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 import hashlib
 import secrets
+import hmac
 import http.cookies
 from datetime import datetime
 import base64
@@ -1702,6 +1703,28 @@ def get_decoration_catalog():
 def hash_password(password):
     """Hash password with SHA256"""
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+PBKDF2_ITERATIONS = 200_000
+
+
+def hash_password_salted(password):
+    """Salted PBKDF2-SHA256 hash for per-user accounts. Returns 'pbkdf2_sha256$iter$salt$hash'."""
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${dk.hex()}"
+
+
+def verify_password_salted(password, stored):
+    """Constant-time verify against a 'pbkdf2_sha256$iter$salt$hash' string."""
+    try:
+        algo, iters, salt_hex, hash_hex = stored.split('$')
+        if algo != 'pbkdf2_sha256':
+            return False
+        dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except (ValueError, AttributeError):
+        return False
 
 
 def verify_credentials(password):
