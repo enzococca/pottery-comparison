@@ -1824,19 +1824,21 @@ def role_allows(min_role, current_role):
 
 
 def verify_credentials(password):
-    """Verify password and return role"""
-    pwd_hash = hash_password(password)
-    if pwd_hash == ADMIN_HASH:
+    """Bootstrap super-admin: verifica solo la password admin condivisa."""
+    if hash_password(password) == ADMIN_HASH:
         return 'admin'
-    elif pwd_hash == VIEWER_HASH:
-        return 'viewer'
     return None
 
 
-def create_session(role):
+def create_session(role, user_id=None, email=None):
     """Create session token"""
     token = secrets.token_hex(32)
-    SESSIONS[token] = {'role': role, 'created': datetime.now().isoformat()}
+    SESSIONS[token] = {
+        'role': role,
+        'user_id': user_id,
+        'email': email,
+        'created': datetime.now().isoformat(),
+    }
     return token
 
 
@@ -1986,13 +1988,16 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             return None
         return role
 
-    def require_admin(self):
-        """Check admin authentication"""
-        role = self.get_role()
-        if role != 'admin':
-            self.send_json({'error': 'Admin access required'}, 403)
+    def require_role(self, min_role):
+        """Gate API: 403 JSON se il ruolo corrente non raggiunge min_role."""
+        if not role_allows(min_role, self.get_role()):
+            self.send_json({'error': 'Accesso non autorizzato', 'required': min_role}, 403)
             return False
         return True
+
+    def require_admin(self):
+        """Alias storico: richiede ruolo admin."""
+        return self.require_role('admin')
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)

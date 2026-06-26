@@ -125,3 +125,19 @@ def test_mutators_return_false_for_missing_user():
     assert viewer_app.set_user_status(conn, 99999, "approved") is False
     assert viewer_app.set_user_role(conn, 99999, "editor") is False
     assert viewer_app.delete_user(conn, 99999) is False
+
+
+def test_verify_credentials_admin_only(monkeypatch):
+    # hash di 'topsecret'
+    h = viewer_app.hash_password("topsecret")
+    monkeypatch.setattr(viewer_app, "ADMIN_HASH", h)
+    assert viewer_app.verify_credentials("topsecret") == "admin"
+    assert viewer_app.verify_credentials("wrong") is None
+
+
+def test_create_session_carries_user(monkeypatch):
+    token = viewer_app.create_session("iscritto", user_id=42, email="x@example.com")
+    sess = viewer_app.SESSIONS[token]
+    assert sess["role"] == "iscritto"
+    assert sess["user_id"] == 42
+    assert sess["email"] == "x@example.com"
