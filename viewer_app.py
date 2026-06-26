@@ -2083,12 +2083,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ===== PROTECTED PAGES =====
 
-        # Viewer page
+        # Viewer page (public — serve to everyone with their current role)
         if parsed.path == '/viewer':
-            role = self.require_auth()
-            if not role:
-                return
-            self.send_html(get_viewer_html(role))
+            self.send_html(get_viewer_html(self.get_role()))
             return
 
         # ===== PROTECTED API =====
@@ -2416,7 +2413,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Update item
         if parsed.path == '/api/update-item':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             item_id = post_data.get('id')
@@ -2430,7 +2427,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Batch update
         if parsed.path == '/api/update-batch':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             ids = post_data.get('ids', [])
@@ -2446,7 +2443,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Rotate image
         if parsed.path == '/api/rotate-image':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             image_path = post_data.get('path', '')
@@ -2463,7 +2460,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Flip image (horizontal/vertical)
         if parsed.path == '/api/flip-image':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             image_path = post_data.get('path', '')
@@ -2480,7 +2477,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Add vocabulary term
         if parsed.path == '/api/vocabulary':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             field = post_data.get('field')
@@ -2502,6 +2499,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Preprocess endpoint - convert real photo to drawing
         if parsed.path == '/api/ml/preprocess':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             if not image_data:
                 self.send_json({'error': 'No image provided'}, 400)
@@ -2519,6 +2518,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Combine Drawing endpoint - combine user drawing with auto contour
         if parsed.path == '/api/ml/combine-drawing':
+            if not self.require_role('iscritto'):
+                return
             original_image = post_data.get('original_image')
             drawing_image = post_data.get('drawing')
             preprocessed_image = post_data.get('preprocessed_image')  # Optional
@@ -2535,8 +2536,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
 
-        # ML Classification endpoint (public)
+        # ML Classification endpoint
         if parsed.path == '/api/ml/classify':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             preprocess = post_data.get('preprocess', False)
 
@@ -2556,6 +2559,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Explain Classification endpoint (with Grad-CAM)
         if parsed.path == '/api/ml/explain':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             preprocess = post_data.get('preprocess', False)
 
@@ -2575,6 +2580,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Image Similarity Search endpoint
         if parsed.path == '/api/ml/similar':
+            if not self.require_role('iscritto'):
+                return
             try:
                 image_data = post_data.get('image')
                 top_k = post_data.get('top_k', 20)
@@ -2601,6 +2608,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Similarity Heatmap endpoint (Issue A: faithful Grad-CAM on cosine score)
         if parsed.path == '/api/ml/similarity-heatmap':
+            if not self.require_role('iscritto'):
+                return
             try:
                 query = post_data.get('query_image')
                 match_path = post_data.get('match_image_path')
@@ -2617,6 +2626,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Get all images for carousel animation
         if parsed.path == '/api/ml/all-images':
+            if not self.require_role('iscritto'):
+                return
             try:
                 if EMBEDDINGS_METADATA:
                     images = [{'id': item['id'], 'image_path': item['image_path']}
@@ -2647,6 +2658,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # 3D Reconstruction endpoint
         if parsed.path == '/api/3d/reconstruct':
+            if not self.require_role('iscritto'):
+                return
             image_path = post_data.get('image_path', '')
             with_decoration = post_data.get('with_decoration', True)
             use_ai = post_data.get('use_ai', False)
@@ -2716,11 +2729,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
 
-        if not self.require_admin():
-            return
-
         # Delete single item
         if parsed.path == '/api/delete-image':
+            if not self.require_role('editor'):
+                return
             image_path = query.get('path', [''])[0]
             item_id = query.get('id', [''])[0]
 
@@ -2736,6 +2748,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Elimina utente (admin)
         if parsed.path == '/api/admin/users':
+            if not self.require_role('admin'):
+                return
             user_id = query.get('user_id', [None])[0]
             if not user_id:
                 self.send_json({'error': 'user_id mancante'}, 400)
