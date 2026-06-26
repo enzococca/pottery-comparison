@@ -1347,6 +1347,62 @@ def migrate_users_table(conn):
     conn.commit()
 
 
+def create_user(conn, email, password):
+    """Crea un iscritto pending. Solleva sqlite3.IntegrityError su email duplicata."""
+    email = email.strip().lower()
+    cur = conn.execute(
+        "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'iscritto', 'pending')",
+        (email, hash_password_salted(password)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_user_by_email(conn, email):
+    return conn.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+
+
+def get_user_by_id(conn, user_id):
+    return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def list_users(conn):
+    rows = conn.execute(
+        """SELECT id, email, role, status, created_at, last_login FROM users
+           ORDER BY (status = 'pending') DESC, created_at DESC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_user_status(conn, user_id, status, approved_by=None):
+    if status == 'approved':
+        conn.execute(
+            "UPDATE users SET status = ?, approved_at = CURRENT_TIMESTAMP, approved_by = ? WHERE id = ?",
+            (status, approved_by, user_id),
+        )
+    else:
+        conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+    conn.commit()
+    return conn.total_changes > 0
+
+
+def set_user_role(conn, user_id, role):
+    conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+    conn.commit()
+    return conn.total_changes > 0
+
+
+def delete_user(conn, user_id):
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    return conn.total_changes > 0
+
+
+def touch_last_login(conn, user_id):
+    conn.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", (user_id,))
+    conn.commit()
+
+
 def run_auto_migrations():
     """Run database migrations automatically on startup"""
     print("   Checking for database migrations...")

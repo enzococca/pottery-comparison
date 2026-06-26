@@ -1,3 +1,7 @@
+import sqlite3
+
+import pytest
+
 import viewer_app
 
 
@@ -45,9 +49,6 @@ def test_role_allows_anonymous():
     assert viewer_app.role_allows('iscritto', 'sconosciuto') is False
 
 
-import sqlite3
-
-
 def _fresh_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -74,3 +75,46 @@ def test_migrate_users_table_idempotent():
     viewer_app.migrate_users_table(conn)  # secondo giro: nessun errore
     cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
     assert 'email' in cols
+
+
+def _migrated_conn():
+    conn = _fresh_conn()
+    viewer_app.migrate_users_table(conn)
+    return conn
+
+
+def test_create_and_get_user():
+    conn = _migrated_conn()
+    uid = viewer_app.create_user(conn, "  Mario@Example.com ", "pw12345678")
+    row = viewer_app.get_user_by_email(conn, "mario@example.com")
+    assert row is not None
+    assert row["id"] == uid
+    assert row["role"] == "iscritto"
+    assert row["status"] == "pending"
+    assert viewer_app.verify_password_salted("pw12345678", row["password_hash"]) is True
+
+
+def test_create_user_duplicate_email():
+    conn = _migrated_conn()
+    viewer_app.create_user(conn, "dup@example.com", "pw12345678")
+    with pytest.raises(sqlite3.IntegrityError):
+        viewer_app.create_user(conn, "dup@example.com", "other12345")
+
+
+def test_set_status_and_role():
+    conn = _migrated_conn()
+    uid = viewer_app.create_user(conn, "u@example.com", "pw12345678")
+    assert viewer_app.set_user_status(conn, uid, "approved", approved_by="admin") is True
+    assert viewer_app.set_user_role(conn, uid, "editor") is True
+    row = viewer_app.get_user_by_id(conn, uid)
+    assert row["status"] == "approved"
+    assert row["role"] == "editor"
+    assert row["approved_by"] == "admin"
+
+
+def test_list_and_delete_user():
+    conn = _migrated_conn()
+    uid = viewer_app.create_user(conn, "a@example.com", "pw12345678")
+    assert any(u["email"] == "a@example.com" for u in viewer_app.list_users(conn))
+    assert viewer_app.delete_user(conn, uid) is True
+    assert viewer_app.get_user_by_id(conn, uid) is None
