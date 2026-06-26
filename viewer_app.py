@@ -2870,26 +2870,48 @@ WELCOME_PAGE = '''<!DOCTYPE html>
         .api-endpoint .path { color: #4fc3f7; }
         .api-endpoint .desc { color: #888; font-size: 0.85em; margin-top: 5px; font-family: sans-serif; }
 
-        .login-section {
+        .auth-card {
             background: rgba(255,255,255,0.05);
             padding: 40px;
             border-radius: 20px;
-            max-width: 400px;
+            max-width: 440px;
             margin: 50px auto;
             text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .login-section h3 { color: #4fc3f7; margin-bottom: 25px; }
-        .login-form { display: flex; flex-direction: column; gap: 15px; }
-        .login-form input {
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+        }
+        .auth-tab {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 1em;
+            transition: color 0.2s;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+        .auth-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .auth-form { display: flex; flex-direction: column; gap: 15px; }
+        .auth-form input {
             background: rgba(255,255,255,0.1);
             border: 1px solid rgba(255,255,255,0.2);
             color: #fff;
             padding: 15px;
             border-radius: 10px;
             text-align: center;
+            font-size: 1em;
         }
-        .login-form input:focus { outline: none; border-color: #4fc3f7; }
-        .login-form button {
+        .auth-form input::placeholder { color: #888; }
+        .auth-form input:focus { outline: none; border-color: #4fc3f7; }
+        .auth-form button {
             background: linear-gradient(135deg, #4fc3f7, #29b6f6);
             color: #000;
             border: none;
@@ -2897,12 +2919,27 @@ WELCOME_PAGE = '''<!DOCTYPE html>
             border-radius: 10px;
             font-weight: bold;
             cursor: pointer;
+            font-size: 1em;
             transition: transform 0.2s;
         }
-        .login-form button:hover { transform: translateY(-2px); }
-        .error { color: #ff5252; display: none; margin-top: 10px; }
-        .error.show { display: block; }
+        .auth-form button:hover { transform: translateY(-2px); }
+        .msg { margin-top: 10px; padding: 10px; border-radius: 8px; display: none; font-size: 0.9em; }
+        .msg.show { display: block; }
+        .msg.error { background: rgba(255,82,82,0.15); color: #ff5252; }
+        .msg.success { background: rgba(76,175,80,0.15); color: #4caf50; }
+        .msg.info { background: rgba(79,195,247,0.15); color: #4fc3f7; }
         .role-info { font-size: 0.8em; color: #666; margin-top: 20px; }
+        .admin-link { text-align: center; margin-top: 20px; font-size: 0.82em; color: #666; }
+        .admin-link a { color: #888; cursor: pointer; text-decoration: underline; }
+        .admin-panel {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            display: none;
+        }
+        .admin-panel.show { display: block; }
+        .admin-panel p { font-size: 0.85em; color: #888; margin-bottom: 12px; }
 
         .footer {
             text-align: center;
@@ -2996,17 +3033,51 @@ WELCOME_PAGE = '''<!DOCTYPE html>
             </div>
         </div>
 
-        <div class="login-section">
-            <h3>Access Database</h3>
-            <form class="login-form" onsubmit="login(event)">
-                <input type="password" id="password" placeholder="Enter password" autocomplete="current-password">
-                <button type="submit">Login</button>
-                <p class="error" id="error">Invalid password</p>
-            </form>
+        <div class="auth-card">
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Accedi</button>
+                <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Registrati</button>
+            </div>
+
+            <!-- Login panel -->
+            <div class="tab-panel active" id="panel-login">
+                <form class="auth-form" onsubmit="handleLogin(event)">
+                    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+                    <button type="submit">Accedi</button>
+                    <div class="msg error" id="login-error"></div>
+                    <div class="msg info" id="login-info"></div>
+                </form>
+            </div>
+
+            <!-- Register panel -->
+            <div class="tab-panel" id="panel-register">
+                <form class="auth-form" onsubmit="handleRegister(event)">
+                    <input type="email" id="reg-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="reg-password" placeholder="Password (min 8 caratteri)" autocomplete="new-password">
+                    <input type="password" id="reg-confirm" placeholder="Conferma password" autocomplete="new-password">
+                    <button type="submit">Registrati</button>
+                    <div class="msg error" id="reg-error"></div>
+                    <div class="msg success" id="reg-success"></div>
+                </form>
+            </div>
+
             <p class="role-info">
                 <strong>Admin:</strong> Full access (edit, delete, rotate)<br>
                 <strong>Viewer:</strong> Browse and search only
             </p>
+
+            <div class="admin-link">
+                <a onclick="toggleAdminPanel()">Accesso amministratore</a>
+            </div>
+            <div class="admin-panel" id="admin-panel">
+                <p>Inserisci la password amministratore (senza email)</p>
+                <form class="auth-form" onsubmit="handleAdminLogin(event)">
+                    <input type="password" id="admin-password" placeholder="Password amministratore" autocomplete="current-password">
+                    <button type="submit">Accedi come Admin</button>
+                    <div class="msg error" id="admin-error"></div>
+                </form>
+            </div>
         </div>
 
         <div class="footer">
@@ -3029,28 +3100,110 @@ WELCOME_PAGE = '''<!DOCTYPE html>
                 `;
             }).catch(() => {});
 
-        async function login(e) {
-            e.preventDefault();
-            const password = document.getElementById('password').value;
-            const error = document.getElementById('error');
+        function switchTab(tab) {
+            document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+            document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+            document.getElementById('panel-login').classList.toggle('active', tab === 'login');
+            document.getElementById('panel-register').classList.toggle('active', tab === 'register');
+        }
 
+        function toggleAdminPanel() {
+            document.getElementById('admin-panel').classList.toggle('show');
+        }
+
+        function showMsg(id, text, type) {
+            const el = document.getElementById(id);
+            el.textContent = text;
+            el.className = 'msg ' + type + ' show';
+        }
+
+        function hideMsg(id) {
+            const el = document.getElementById(id);
+            el.className = 'msg';
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            hideMsg('login-error');
+            hideMsg('login-info');
             try {
-                const response = await fetch('/api/login', {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location = '/viewer';
+                } else if (res.status === 403 && data.status === 'pending') {
+                    showMsg('login-info', 'Account in attesa di approvazione.', 'info');
+                } else if (res.status === 401) {
+                    showMsg('login-error', 'Credenziali non valide.', 'error');
+                } else {
+                    showMsg('login-error', data.message || 'Accesso negato.', 'error');
+                }
+            } catch (err) {
+                showMsg('login-error', 'Errore di connessione.', 'error');
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const confirm = document.getElementById('reg-confirm').value;
+            hideMsg('reg-error');
+            hideMsg('reg-success');
+            if (password.length < 8) {
+                showMsg('reg-error', 'La password deve avere almeno 8 caratteri.', 'error');
+                return;
+            }
+            if (password !== confirm) {
+                showMsg('reg-error', 'Le password non coincidono.', 'error');
+                return;
+            }
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showMsg('reg-success', 'Registrazione ricevuta, in attesa di approvazione.', 'success');
+                    document.getElementById('reg-email').value = '';
+                    document.getElementById('reg-password').value = '';
+                    document.getElementById('reg-confirm').value = '';
+                    setTimeout(() => switchTab('login'), 2500);
+                } else {
+                    showMsg('reg-error', data.message || 'Errore durante la registrazione.', 'error');
+                }
+            } catch (err) {
+                showMsg('reg-error', 'Errore di connessione.', 'error');
+            }
+        }
+
+        async function handleAdminLogin(e) {
+            e.preventDefault();
+            const password = document.getElementById('admin-password').value;
+            hideMsg('admin-error');
+            try {
+                const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({password})
                 });
-                const result = await response.json();
-
-                if (result.success) {
-                    window.location.href = '/viewer';
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location = '/viewer';
                 } else {
-                    error.classList.add('show');
-                    document.getElementById('password').value = '';
+                    showMsg('admin-error', 'Password amministratore non valida.', 'error');
+                    document.getElementById('admin-password').value = '';
                 }
             } catch (err) {
-                error.textContent = 'Connection error';
-                error.classList.add('show');
+                showMsg('admin-error', 'Errore di connessione.', 'error');
             }
         }
     </script>
