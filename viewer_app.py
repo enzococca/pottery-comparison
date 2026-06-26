@@ -2282,6 +2282,43 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'No PDF configured for this collection'})
             return
 
+        # Lista annotazioni dell'utente corrente
+        if parsed.path == '/api/annotations':
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            if not user_id:
+                self.send_json({'annotations': []})
+                return
+            conn = get_db()
+            try:
+                anns = list_annotations(conn, user_id)
+            finally:
+                conn.close()
+            self.send_json({'annotations': anns})
+            return
+
+        # Singola annotazione (owner-only)
+        if parsed.path.startswith('/api/annotations/'):
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            ann_id = parsed.path.rsplit('/', 1)[-1]
+            conn = get_db()
+            try:
+                row = get_annotation(conn, ann_id, user_id) if user_id else None
+            finally:
+                conn.close()
+            if not row:
+                self.send_json({'error': 'Annotazione non trovata'}, 404)
+                return
+            self.send_json({
+                'id': row['id'], 'image_data': row['image_data'],
+                'note_text': row['note_text'], 'created_at': row['created_at'],
+                'results': json.loads(row['results_json']) if row['results_json'] else [],
+            })
+            return
+
         # Serve static files with caching
         # Add cache headers for images and PDFs
         if parsed.path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
@@ -2786,6 +2823,32 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'error': f'3D reconstruction failed: {str(e)}'}, 500)
             return
 
+        # Crea annotazione personale (iscritto+, owner = sessione)
+        if parsed.path == '/api/annotations':
+            if not self.require_role('iscritto'):
+                return
+            session = get_session(self.headers.get('Cookie')) or {}
+            user_id = session.get('user_id')
+            if not user_id:
+                self.send_json({'error': 'Le annotazioni richiedono un account registrato'}, 403)
+                return
+            image = post_data.get('image') or ''
+            note = (post_data.get('note') or '')[:4000]
+            if not image or len(image) > 6_000_000:
+                self.send_json({'error': 'Immagine mancante o troppo grande'}, 400)
+                return
+            allowed = ('id', 'collection', 'image_path', 'similarity',
+                       'coarse_similarity', 'image_type', 'macro_period', 'period')
+            raw = post_data.get('results') or []
+            results = [{k: m.get(k) for k in allowed} for m in raw[:30] if isinstance(m, dict)]
+            conn = get_db()
+            try:
+                rid = create_annotation(conn, user_id, image, note, json.dumps(results))
+            finally:
+                conn.close()
+            self.send_json({'success': True, 'id': rid})
+            return
+
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
@@ -2826,6 +2889,20 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             if ok:
                 drop_user_sessions(user_id)
             self.send_json({'success': True} if ok else {'error': 'Utente non trovato'}, 200 if ok else 404)
+            return
+
+        # Elimina una propria annotazione (iscritto+, owner-only)
+        if parsed.path.startswith('/api/annotations/'):
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            ann_id = parsed.path.rsplit('/', 1)[-1]
+            conn = get_db()
+            try:
+                ok = delete_annotation(conn, ann_id, user_id) if user_id else False
+            finally:
+                conn.close()
+            self.send_json({'success': True} if ok else {'error': 'Annotazione non trovata'}, 200 if ok else 404)
             return
 
         self.send_json({'error': 'Not found'}, 404)
