@@ -3522,6 +3522,24 @@ def get_viewer_html(role):
         }
     ''' if is_admin else ''
 
+    annotations_js = '''
+        function saveAnnotation() {
+            var image = manualDrawingData || mlImageData;
+            if (!image) { alert('Carica e confronta prima un\\'immagine'); return; }
+            var note = prompt('Nota (facoltativa):', '') || '';
+            fetch('/api/annotations', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: image, note: note, results: lastSearchResults})
+            }).then(function(r) { return r.json(); })
+              .then(function(data) {
+                  if (data && data.success) { alert('Annotazione salvata.'); }
+                  else { alert('Errore: ' + ((data && data.error) || 'salvataggio non riuscito')); }
+              })
+              .catch(function(e) { alert('Errore di rete: ' + e); });
+        }
+    ''' if is_member else ''
+
     return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5624,6 +5642,7 @@ def get_viewer_html(role):
                         Upload an image to find visually similar ceramics
                     </p>
                 </div>
+                {'<button class="action-btn" onclick="saveAnnotation()" style="margin-top:10px;">&#128190; Salva annotazione</button>' if is_member else ''}
             </div>
         </div>
     </div>
@@ -6235,6 +6254,7 @@ def get_viewer_html(role):
         let allDbImages = [];
         let realPhotoMode = false;
         let manualDrawingData = null;
+        let lastSearchResults = [];
         let preprocessedImageData = null;  // Stores preprocessed image with current parameters
         let decoDrawMode = 'draw';
         let isDecoDrawing = false;
@@ -7041,6 +7061,7 @@ def get_viewer_html(role):
                 displayStatistics(result.statistics || {{}}, result.similar_items || []);
 
                 // Display matches
+                lastSearchResults = result.similar_items || [];
                 displaySimilarMatches(result.similar_items || [], result);
 
             }} catch (err) {{
@@ -9046,6 +9067,8 @@ def get_viewer_html(role):
                 viewer3dControls.autoRotateSpeed = 2.0;
             }}
         }}
+
+        {annotations_js}
 
         {user_management_js}
 
