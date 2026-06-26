@@ -1317,6 +1317,20 @@ def init_db():
     conn.close()
 
 
+def migrate_annotations_table(conn):
+    """Idempotently create the personal comparison-annotations table."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS comparison_annotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        image_data TEXT NOT NULL,
+        note_text TEXT,
+        results_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_user ON comparison_annotations(user_id)")
+    conn.commit()
+
+
 def migrate_users_table(conn):
     """Idempotently bring the users table up to the per-account schema."""
     cursor = conn.cursor()
@@ -1495,6 +1509,7 @@ def run_auto_migrations():
 
     # Migrazione tabella users (account per-utente)
     migrate_users_table(conn)
+    migrate_annotations_table(conn)
 
     conn.commit()
     conn.close()
