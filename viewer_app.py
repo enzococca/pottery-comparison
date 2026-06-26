@@ -1329,7 +1329,35 @@ def migrate_users_table(conn):
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
     cursor.execute("PRAGMA table_info(users)")
-    existing = {row[1] for row in cursor.fetchall()}
+    col_info = cursor.fetchall()
+    existing = {row[1] for row in col_info}
+    # Check if username column still has a NOT NULL constraint (old init_db schema).
+    # SQLite cannot ALTER COLUMN, so reconstruct the table to drop the constraint.
+    username_notnull = any(row[1] == 'username' and row[3] == 1 for row in col_info)
+    if username_notnull:
+        cursor.execute("""CREATE TABLE users_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'iscritto',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            email TEXT,
+            status TEXT DEFAULT 'pending',
+            approved_at TIMESTAMP,
+            approved_by TEXT,
+            last_login TIMESTAMP
+        )""")
+        # Preserve any existing rows (legacy password-only rows have NULL email)
+        cursor.execute("""INSERT INTO users_new
+            (id, username, password_hash, role, created_at)
+            SELECT id, username, password_hash, role, created_at FROM users""")
+        cursor.execute("DROP TABLE users")
+        cursor.execute("ALTER TABLE users_new RENAME TO users")
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+        )
+        conn.commit()
+        return
     new_columns = [
         ("email", "TEXT"),
         ("status", "TEXT DEFAULT 'pending'"),
@@ -2260,6 +2288,29 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'success': True, 'role': role}).encode())
             else:
                 self.send_json({'success': False, 'error': 'Invalid credentials'})
+            return
+
+        # Registrazione iscritto (pubblica)
+        if parsed.path == '/api/register':
+            email = (post_data.get('email') or '').strip().lower()
+            password = post_data.get('password') or ''
+            if '@' not in email or '.' not in email.split('@')[-1]:
+                self.send_json({'success': False, 'error': 'Email non valida'}, 400)
+                return
+            if len(password) < 8:
+                self.send_json({'success': False, 'error': 'La password deve avere almeno 8 caratteri'}, 400)
+                return
+            conn = get_db()
+            try:
+                if get_user_by_email(conn, email):
+                    self.send_json({'success': False, 'error': 'Email già registrata'}, 409)
+                    return
+                create_user(conn, email, password)
+                self.send_json({'success': True, 'message': 'Registrazione ricevuta. In attesa di approvazione.'})
+            except sqlite3.IntegrityError:
+                self.send_json({'success': False, 'error': 'Email già registrata'}, 409)
+            finally:
+                conn.close()
             return
 
         # Logout
