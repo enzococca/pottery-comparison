@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 import hashlib
 import secrets
+import hmac
 import http.cookies
 from datetime import datetime
 import base64
@@ -124,7 +125,6 @@ CONFIG_FILE = "config.json"
 # Default admin password: admin2024
 ADMIN_HASH = os.environ.get('ADMIN_HASH', 'b8b8eb83374c0bf3b1c3224159f6119dbfff1b7ed6dfecdd80d4e8a895790a34')
 # Default viewer password: viewer2024
-VIEWER_HASH = os.environ.get('VIEWER_HASH', '292a886d8da982974b3e9ad1ad61c0328f075ee17cd0eb0a3aba3aa03481a3b9')
 
 # Session storage: {token: {'role': 'admin'|'viewer', 'created': timestamp}}
 SESSIONS = {}
@@ -1317,6 +1317,119 @@ def init_db():
     conn.close()
 
 
+def migrate_users_table(conn):
+    """Idempotently bring the users table up to the per-account schema."""
+    cursor = conn.cursor()
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'iscritto',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    cursor.execute("PRAGMA table_info(users)")
+    col_info = cursor.fetchall()
+    existing = {row[1] for row in col_info}
+    # Check if username column still has a NOT NULL constraint (old init_db schema).
+    # SQLite cannot ALTER COLUMN, so reconstruct the table to drop the constraint.
+    username_notnull = any(row[1] == 'username' and row[3] == 1 for row in col_info)
+    if username_notnull:
+        cursor.execute("""CREATE TABLE users_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'iscritto',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            email TEXT,
+            status TEXT DEFAULT 'pending',
+            approved_at TIMESTAMP,
+            approved_by TEXT,
+            last_login TIMESTAMP
+        )""")
+        # Preserve any existing rows (legacy password-only rows have NULL email)
+        cursor.execute("""INSERT INTO users_new
+            (id, username, password_hash, role, created_at)
+            SELECT id, username, password_hash, role, created_at FROM users""")
+        cursor.execute("DROP TABLE users")
+        cursor.execute("ALTER TABLE users_new RENAME TO users")
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+        )
+        conn.commit()
+        return
+    new_columns = [
+        ("email", "TEXT"),
+        ("status", "TEXT DEFAULT 'pending'"),
+        ("approved_at", "TIMESTAMP"),
+        ("approved_by", "TEXT"),
+        ("last_login", "TIMESTAMP"),
+    ]
+    for col_name, col_def in new_columns:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+    # Unique partial index on email (ignores NULL legacy rows)
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+    )
+    conn.commit()
+
+
+def create_user(conn, email, password):
+    """Crea un iscritto pending. Solleva sqlite3.IntegrityError su email duplicata."""
+    email = email.strip().lower()
+    cur = conn.execute(
+        "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'iscritto', 'pending')",
+        (email, hash_password_salted(password)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_user_by_email(conn, email):
+    return conn.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+
+
+def get_user_by_id(conn, user_id):
+    return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def list_users(conn):
+    rows = conn.execute(
+        """SELECT id, email, role, status, created_at, last_login FROM users
+           ORDER BY (status = 'pending') DESC, created_at DESC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_user_status(conn, user_id, status, approved_by=None):
+    if status == 'approved':
+        cur = conn.execute(
+            "UPDATE users SET status = ?, approved_at = CURRENT_TIMESTAMP, approved_by = ? WHERE id = ?",
+            (status, approved_by, user_id),
+        )
+    else:
+        cur = conn.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def set_user_role(conn, user_id, role):
+    cur = conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def delete_user(conn, user_id):
+    cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def touch_last_login(conn, user_id):
+    conn.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", (user_id,))
+    conn.commit()
+
+
 def run_auto_migrations():
     """Run database migrations automatically on startup"""
     print("   Checking for database migrations...")
@@ -1379,6 +1492,9 @@ def run_auto_migrations():
             INSERT OR IGNORE INTO vocabulary (field, value, count)
             VALUES (?, ?, 0)
         ''', (field, value))
+
+    # Migrazione tabella users (account per-utente)
+    migrate_users_table(conn)
 
     conn.commit()
     conn.close()
@@ -1704,21 +1820,60 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+PBKDF2_ITERATIONS = 200_000
+
+
+def hash_password_salted(password):
+    """Salted PBKDF2-SHA256 hash for per-user accounts. Returns 'pbkdf2_sha256$iter$salt$hash'."""
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${dk.hex()}"
+
+
+def verify_password_salted(password, stored):
+    """Constant-time verify against a 'pbkdf2_sha256$iter$salt$hash' string."""
+    try:
+        algo, iters, salt_hex, hash_hex = stored.split('$')
+        if algo != 'pbkdf2_sha256':
+            return False
+        dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except (ValueError, AttributeError):
+        return False
+
+
+ROLE_RANK = {'iscritto': 1, 'editor': 2, 'admin': 3}
+
+
+def role_allows(min_role, current_role):
+    """True se current_role ha rango >= min_role. None/sconosciuto -> False."""
+    return ROLE_RANK.get(current_role, 0) >= ROLE_RANK.get(min_role, 99)
+
+
 def verify_credentials(password):
-    """Verify password and return role"""
-    pwd_hash = hash_password(password)
-    if pwd_hash == ADMIN_HASH:
+    """Bootstrap super-admin: verifica solo la password admin condivisa."""
+    if hash_password(password) == ADMIN_HASH:
         return 'admin'
-    elif pwd_hash == VIEWER_HASH:
-        return 'viewer'
     return None
 
 
-def create_session(role):
+def create_session(role, user_id=None, email=None):
     """Create session token"""
     token = secrets.token_hex(32)
-    SESSIONS[token] = {'role': role, 'created': datetime.now().isoformat()}
+    SESSIONS[token] = {
+        'role': role,
+        'user_id': user_id,
+        'email': email,
+        'created': datetime.now().isoformat(),
+    }
     return token
+
+
+def drop_user_sessions(user_id):
+    """Invalidate all in-memory sessions for a user (after suspend/role-change/delete)."""
+    target = str(user_id)
+    for tok in [t for t, s in SESSIONS.items() if str(s.get('user_id')) == target]:
+        SESSIONS.pop(tok, None)
 
 
 def get_session(cookie_header):
@@ -1867,13 +2022,16 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             return None
         return role
 
-    def require_admin(self):
-        """Check admin authentication"""
-        role = self.get_role()
-        if role != 'admin':
-            self.send_json({'error': 'Admin access required'}, 403)
+    def require_role(self, min_role):
+        """Gate API: 403 JSON se il ruolo corrente non raggiunge min_role."""
+        if not role_allows(min_role, self.get_role()):
+            self.send_json({'error': 'Accesso non autorizzato', 'required': min_role}, 403)
             return False
         return True
+
+    def require_admin(self):
+        """Alias storico: richiede ruolo admin."""
+        return self.require_role('admin')
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1929,19 +2087,16 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json({'catalog': catalog, 'count': len(catalog)})
             return
 
-        # ===== PROTECTED PAGES =====
+        # ===== PUBLIC PAGES (read-only catalog) =====
 
-        # Viewer page
+        # Viewer page (public — serve to everyone with their current role)
         if parsed.path == '/viewer':
-            role = self.require_auth()
-            if not role:
-                return
-            self.send_html(get_viewer_html(role))
+            self.send_html(get_viewer_html(self.get_role()))
             return
 
         # ===== PROTECTED API =====
 
-        # Get config (authenticated)
+        # Get config (public; includes user_role for the current session)
         if parsed.path == '/api/config':
             config = load_config()
             config['macro_periods'] = list(MACRO_PERIODS.keys())
@@ -1953,6 +2108,18 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/api/data':
             items = get_all_items()
             self.send_json(items)
+            return
+
+        # Lista utenti (admin)
+        if parsed.path == '/api/admin/users':
+            if not self.require_role('admin'):
+                return
+            conn = get_db()
+            try:
+                users = list_users(conn)
+            finally:
+                conn.close()
+            self.send_json({'users': users})
             return
 
         # Get PDF URL for cross-platform viewing
@@ -2124,9 +2291,35 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Login
         if parsed.path == '/api/login':
+            email = (post_data.get('email') or '').strip().lower()
             password = post_data.get('password', '')
-            role = verify_credentials(password)
 
+            if email:
+                conn = get_db()
+                try:
+                    user = get_user_by_email(conn, email)
+                    if not user or not verify_password_salted(password, user['password_hash']):
+                        self.send_json({'success': False, 'error': 'Credenziali non valide'}, 401)
+                        return
+                    if user['status'] == 'pending':
+                        self.send_json({'success': False, 'error': 'Account in attesa di approvazione', 'status': 'pending'}, 403)
+                        return
+                    if user['status'] != 'approved':
+                        self.send_json({'success': False, 'error': 'Account non attivo', 'status': user['status']}, 403)
+                        return
+                    touch_last_login(conn, user['id'])
+                    token = create_session(user['role'], user_id=user['id'], email=user['email'])
+                finally:
+                    conn.close()
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Set-Cookie', f'session={token}; Path=/; HttpOnly; SameSite=Strict')
+                self.end_headers()
+                self.wfile.write(json.dumps({'success': True, 'role': user['role']}).encode())
+                return
+
+            # bootstrap admin (email vuota, solo password condivisa)
+            role = verify_credentials(password)
             if role:
                 token = create_session(role)
                 self.send_response(200)
@@ -2135,11 +2328,89 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({'success': True, 'role': role}).encode())
             else:
-                self.send_json({'success': False, 'error': 'Invalid credentials'})
+                self.send_json({'success': False, 'error': 'Credenziali non valide'}, 401)
+            return
+
+        # Registrazione iscritto (pubblica)
+        if parsed.path == '/api/register':
+            email = (post_data.get('email') or '').strip().lower()
+            password = post_data.get('password') or ''
+            if '@' not in email or '.' not in email.split('@')[-1]:
+                self.send_json({'success': False, 'error': 'Email non valida'}, 400)
+                return
+            if len(password) < 8:
+                self.send_json({'success': False, 'error': 'La password deve avere almeno 8 caratteri'}, 400)
+                return
+            conn = get_db()
+            try:
+                if get_user_by_email(conn, email):
+                    self.send_json({'success': False, 'error': 'Email già registrata'}, 409)
+                    return
+                create_user(conn, email, password)
+                self.send_json({'success': True, 'message': 'Registrazione ricevuta. In attesa di approvazione.'})
+            except sqlite3.IntegrityError:
+                self.send_json({'success': False, 'error': 'Email già registrata'}, 409)
+            finally:
+                conn.close()
+            return
+
+        # Azioni admin sugli utenti
+        if parsed.path in ('/api/admin/users/approve', '/api/admin/users/reject',
+                           '/api/admin/users/role', '/api/admin/users/suspend',
+                           '/api/admin/users/reset-password'):
+            if not self.require_role('admin'):
+                return
+            user_id = post_data.get('user_id')
+            if not user_id:
+                self.send_json({'error': 'user_id mancante'}, 400)
+                return
+            conn = get_db()
+            try:
+                actor = (get_session(self.headers.get('Cookie')) or {}).get('email') or 'admin'
+                if parsed.path.endswith('/approve'):
+                    ok = set_user_status(conn, user_id, 'approved', approved_by=actor)
+                elif parsed.path.endswith('/reject'):
+                    ok = set_user_status(conn, user_id, 'rejected')
+                elif parsed.path.endswith('/suspend'):
+                    suspend = bool(post_data.get('suspend', True))
+                    ok = set_user_status(conn, user_id, 'suspended' if suspend else 'approved',
+                                         approved_by=None if suspend else actor)
+                elif parsed.path.endswith('/role'):
+                    role = post_data.get('role')
+                    if role not in ('iscritto', 'editor'):
+                        self.send_json({'error': 'Ruolo non valido'}, 400)
+                        return
+                    ok = set_user_role(conn, user_id, role)
+                elif parsed.path.endswith('/reset-password'):
+                    new_pw = post_data.get('new_password') or ''
+                    if len(new_pw) < 8:
+                        self.send_json({'error': 'Password troppo corta'}, 400)
+                        return
+                    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                                 (hash_password_salted(new_pw), user_id))
+                    conn.commit()
+                    ok = conn.total_changes > 0
+            finally:
+                conn.close()
+            if not ok:
+                self.send_json({'error': 'Utente non trovato'}, 404)
+            else:
+                # Drop cached sessions for all actions except approve
+                if not parsed.path.endswith('/approve'):
+                    drop_user_sessions(user_id)
+                self.send_json({'success': True})
             return
 
         # Logout
         if parsed.path == '/api/logout':
+            session_data = get_session(self.headers.get('Cookie'))
+            cookies = http.cookies.SimpleCookie()
+            try:
+                cookies.load(self.headers.get('Cookie') or '')
+                if 'session' in cookies:
+                    SESSIONS.pop(cookies['session'].value, None)
+            except Exception:
+                pass
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Set-Cookie', 'session=; Path=/; Max-Age=0')
@@ -2147,11 +2418,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'success': True}).encode())
             return
 
-        # ===== ADMIN ONLY ENDPOINTS =====
+        # ===== CATALOG WRITE ENDPOINTS (editor+) =====
 
         # Update item
         if parsed.path == '/api/update-item':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             item_id = post_data.get('id')
@@ -2165,7 +2436,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Batch update
         if parsed.path == '/api/update-batch':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             ids = post_data.get('ids', [])
@@ -2181,7 +2452,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Rotate image
         if parsed.path == '/api/rotate-image':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             image_path = post_data.get('path', '')
@@ -2198,7 +2469,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Flip image (horizontal/vertical)
         if parsed.path == '/api/flip-image':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             image_path = post_data.get('path', '')
@@ -2215,7 +2486,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Add vocabulary term
         if parsed.path == '/api/vocabulary':
-            if not self.require_admin():
+            if not self.require_role('editor'):
                 return
 
             field = post_data.get('field')
@@ -2237,6 +2508,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Preprocess endpoint - convert real photo to drawing
         if parsed.path == '/api/ml/preprocess':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             if not image_data:
                 self.send_json({'error': 'No image provided'}, 400)
@@ -2254,6 +2527,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Combine Drawing endpoint - combine user drawing with auto contour
         if parsed.path == '/api/ml/combine-drawing':
+            if not self.require_role('iscritto'):
+                return
             original_image = post_data.get('original_image')
             drawing_image = post_data.get('drawing')
             preprocessed_image = post_data.get('preprocessed_image')  # Optional
@@ -2270,8 +2545,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
 
-        # ML Classification endpoint (public)
+        # ML Classification endpoint
         if parsed.path == '/api/ml/classify':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             preprocess = post_data.get('preprocess', False)
 
@@ -2291,6 +2568,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Explain Classification endpoint (with Grad-CAM)
         if parsed.path == '/api/ml/explain':
+            if not self.require_role('iscritto'):
+                return
             image_data = post_data.get('image')
             preprocess = post_data.get('preprocess', False)
 
@@ -2310,6 +2589,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Image Similarity Search endpoint
         if parsed.path == '/api/ml/similar':
+            if not self.require_role('iscritto'):
+                return
             try:
                 image_data = post_data.get('image')
                 top_k = post_data.get('top_k', 20)
@@ -2336,6 +2617,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ML Similarity Heatmap endpoint (Issue A: faithful Grad-CAM on cosine score)
         if parsed.path == '/api/ml/similarity-heatmap':
+            if not self.require_role('iscritto'):
+                return
             try:
                 query = post_data.get('query_image')
                 match_path = post_data.get('match_image_path')
@@ -2352,6 +2635,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Get all images for carousel animation
         if parsed.path == '/api/ml/all-images':
+            if not self.require_role('iscritto'):
+                return
             try:
                 if EMBEDDINGS_METADATA:
                     images = [{'id': item['id'], 'image_path': item['image_path']}
@@ -2374,14 +2659,14 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             encoders_exist = ML_ENCODERS_PATH.exists()
             self.send_json({
                 'available': model_exists and encoders_exist,
-                'model_loaded': ML_MODEL is not None,
-                'model_path': str(ML_MODEL_PATH),
-                'encoders_path': str(ML_ENCODERS_PATH)
+                'model_loaded': ML_MODEL is not None
             })
             return
 
         # 3D Reconstruction endpoint
         if parsed.path == '/api/3d/reconstruct':
+            if not self.require_role('iscritto'):
+                return
             image_path = post_data.get('image_path', '')
             with_decoration = post_data.get('with_decoration', True)
             use_ai = post_data.get('use_ai', False)
@@ -2447,14 +2732,14 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
+
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
 
-        if not self.require_admin():
-            return
-
         # Delete single item
         if parsed.path == '/api/delete-image':
+            if not self.require_role('editor'):
+                return
             image_path = query.get('path', [''])[0]
             item_id = query.get('id', [''])[0]
 
@@ -2466,6 +2751,24 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': True})
             else:
                 self.send_json({'success': False, 'error': 'Delete failed'})
+            return
+
+        # Elimina utente (admin)
+        if parsed.path == '/api/admin/users':
+            if not self.require_role('admin'):
+                return
+            user_id = query.get('user_id', [None])[0]
+            if not user_id:
+                self.send_json({'error': 'user_id mancante'}, 400)
+                return
+            conn = get_db()
+            try:
+                ok = delete_user(conn, user_id)
+            finally:
+                conn.close()
+            if ok:
+                drop_user_sessions(user_id)
+            self.send_json({'success': True} if ok else {'error': 'Utente non trovato'}, 200 if ok else 404)
             return
 
         self.send_json({'error': 'Not found'}, 404)
@@ -2576,26 +2879,48 @@ WELCOME_PAGE = '''<!DOCTYPE html>
         .api-endpoint .path { color: #4fc3f7; }
         .api-endpoint .desc { color: #888; font-size: 0.85em; margin-top: 5px; font-family: sans-serif; }
 
-        .login-section {
+        .auth-card {
             background: rgba(255,255,255,0.05);
             padding: 40px;
             border-radius: 20px;
-            max-width: 400px;
+            max-width: 440px;
             margin: 50px auto;
             text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .login-section h3 { color: #4fc3f7; margin-bottom: 25px; }
-        .login-form { display: flex; flex-direction: column; gap: 15px; }
-        .login-form input {
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+        }
+        .auth-tab {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 1em;
+            transition: color 0.2s;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+        .auth-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .auth-form { display: flex; flex-direction: column; gap: 15px; }
+        .auth-form input {
             background: rgba(255,255,255,0.1);
             border: 1px solid rgba(255,255,255,0.2);
             color: #fff;
             padding: 15px;
             border-radius: 10px;
             text-align: center;
+            font-size: 1em;
         }
-        .login-form input:focus { outline: none; border-color: #4fc3f7; }
-        .login-form button {
+        .auth-form input::placeholder { color: #888; }
+        .auth-form input:focus { outline: none; border-color: #4fc3f7; }
+        .auth-form button {
             background: linear-gradient(135deg, #4fc3f7, #29b6f6);
             color: #000;
             border: none;
@@ -2603,12 +2928,27 @@ WELCOME_PAGE = '''<!DOCTYPE html>
             border-radius: 10px;
             font-weight: bold;
             cursor: pointer;
+            font-size: 1em;
             transition: transform 0.2s;
         }
-        .login-form button:hover { transform: translateY(-2px); }
-        .error { color: #ff5252; display: none; margin-top: 10px; }
-        .error.show { display: block; }
+        .auth-form button:hover { transform: translateY(-2px); }
+        .msg { margin-top: 10px; padding: 10px; border-radius: 8px; display: none; font-size: 0.9em; }
+        .msg.show { display: block; }
+        .msg.error { background: rgba(255,82,82,0.15); color: #ff5252; }
+        .msg.success { background: rgba(76,175,80,0.15); color: #4caf50; }
+        .msg.info { background: rgba(79,195,247,0.15); color: #4fc3f7; }
         .role-info { font-size: 0.8em; color: #666; margin-top: 20px; }
+        .admin-link { text-align: center; margin-top: 20px; font-size: 0.82em; color: #666; }
+        .admin-link a { color: #888; cursor: pointer; text-decoration: underline; }
+        .admin-panel {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            display: none;
+        }
+        .admin-panel.show { display: block; }
+        .admin-panel p { font-size: 0.85em; color: #888; margin-bottom: 12px; }
 
         .footer {
             text-align: center;
@@ -2702,17 +3042,51 @@ WELCOME_PAGE = '''<!DOCTYPE html>
             </div>
         </div>
 
-        <div class="login-section">
-            <h3>Access Database</h3>
-            <form class="login-form" onsubmit="login(event)">
-                <input type="password" id="password" placeholder="Enter password" autocomplete="current-password">
-                <button type="submit">Login</button>
-                <p class="error" id="error">Invalid password</p>
-            </form>
+        <div class="auth-card">
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Accedi</button>
+                <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Registrati</button>
+            </div>
+
+            <!-- Login panel -->
+            <div class="tab-panel active" id="panel-login">
+                <form class="auth-form" onsubmit="handleLogin(event)">
+                    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+                    <button type="submit">Accedi</button>
+                    <div class="msg error" id="login-error"></div>
+                    <div class="msg info" id="login-info"></div>
+                </form>
+            </div>
+
+            <!-- Register panel -->
+            <div class="tab-panel" id="panel-register">
+                <form class="auth-form" onsubmit="handleRegister(event)">
+                    <input type="email" id="reg-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="reg-password" placeholder="Password (min 8 caratteri)" autocomplete="new-password">
+                    <input type="password" id="reg-confirm" placeholder="Conferma password" autocomplete="new-password">
+                    <button type="submit">Registrati</button>
+                    <div class="msg error" id="reg-error"></div>
+                    <div class="msg success" id="reg-success"></div>
+                </form>
+            </div>
+
             <p class="role-info">
                 <strong>Admin:</strong> Full access (edit, delete, rotate)<br>
                 <strong>Viewer:</strong> Browse and search only
             </p>
+
+            <div class="admin-link">
+                <a onclick="toggleAdminPanel()">Accesso amministratore</a>
+            </div>
+            <div class="admin-panel" id="admin-panel">
+                <p>Inserisci la password amministratore (senza email)</p>
+                <form class="auth-form" onsubmit="handleAdminLogin(event)">
+                    <input type="password" id="admin-password" placeholder="Password amministratore" autocomplete="current-password">
+                    <button type="submit">Accedi come Admin</button>
+                    <div class="msg error" id="admin-error"></div>
+                </form>
+            </div>
         </div>
 
         <div class="footer">
@@ -2735,28 +3109,110 @@ WELCOME_PAGE = '''<!DOCTYPE html>
                 `;
             }).catch(() => {});
 
-        async function login(e) {
-            e.preventDefault();
-            const password = document.getElementById('password').value;
-            const error = document.getElementById('error');
+        function switchTab(tab) {
+            document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+            document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+            document.getElementById('panel-login').classList.toggle('active', tab === 'login');
+            document.getElementById('panel-register').classList.toggle('active', tab === 'register');
+        }
 
+        function toggleAdminPanel() {
+            document.getElementById('admin-panel').classList.toggle('show');
+        }
+
+        function showMsg(id, text, type) {
+            const el = document.getElementById(id);
+            el.textContent = text;
+            el.className = 'msg ' + type + ' show';
+        }
+
+        function hideMsg(id) {
+            const el = document.getElementById(id);
+            el.className = 'msg';
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            hideMsg('login-error');
+            hideMsg('login-info');
             try {
-                const response = await fetch('/api/login', {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location = '/viewer';
+                } else if (res.status === 403 && data.status === 'pending') {
+                    showMsg('login-info', 'Account in attesa di approvazione.', 'info');
+                } else if (res.status === 401) {
+                    showMsg('login-error', 'Credenziali non valide.', 'error');
+                } else {
+                    showMsg('login-error', data.message || 'Accesso negato.', 'error');
+                }
+            } catch (err) {
+                showMsg('login-error', 'Errore di connessione.', 'error');
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const confirm = document.getElementById('reg-confirm').value;
+            hideMsg('reg-error');
+            hideMsg('reg-success');
+            if (password.length < 8) {
+                showMsg('reg-error', 'La password deve avere almeno 8 caratteri.', 'error');
+                return;
+            }
+            if (password !== confirm) {
+                showMsg('reg-error', 'Le password non coincidono.', 'error');
+                return;
+            }
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showMsg('reg-success', 'Registrazione ricevuta, in attesa di approvazione.', 'success');
+                    document.getElementById('reg-email').value = '';
+                    document.getElementById('reg-password').value = '';
+                    document.getElementById('reg-confirm').value = '';
+                    setTimeout(() => switchTab('login'), 2500);
+                } else {
+                    showMsg('reg-error', data.message || 'Errore durante la registrazione.', 'error');
+                }
+            } catch (err) {
+                showMsg('reg-error', 'Errore di connessione.', 'error');
+            }
+        }
+
+        async function handleAdminLogin(e) {
+            e.preventDefault();
+            const password = document.getElementById('admin-password').value;
+            hideMsg('admin-error');
+            try {
+                const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({password})
                 });
-                const result = await response.json();
-
-                if (result.success) {
-                    window.location.href = '/viewer';
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location = '/viewer';
                 } else {
-                    error.classList.add('show');
-                    document.getElementById('password').value = '';
+                    showMsg('admin-error', 'Password amministratore non valida.', 'error');
+                    document.getElementById('admin-password').value = '';
                 }
             } catch (err) {
-                error.textContent = 'Connection error';
-                error.classList.add('show');
+                showMsg('admin-error', 'Errore di connessione.', 'error');
             }
         }
     </script>
@@ -2768,12 +3224,15 @@ WELCOME_PAGE = '''<!DOCTYPE html>
 def get_viewer_html(role):
     """Generate viewer HTML with role-based UI"""
     is_admin = role == 'admin'
+    is_editor = role in ('editor', 'admin')
+    is_member = role in ('iscritto', 'editor', 'admin')
+
     admin_buttons = '''
         <button class="action-btn edit-btn" onclick="openEditModal()">&#9998; Edit</button>
         <button class="action-btn batch-btn" id="batchEditBtn" onclick="openBatchEditModal()">&#9998; Edit Sel.</button>
         <button class="action-btn batch-btn" id="batchDeleteBtn" onclick="confirmBatchDelete()">&#128465; Delete Sel.</button>
         <button class="action-btn delete-btn" onclick="confirmDelete()">&#128465;</button>
-    ''' if is_admin else ''
+    ''' if is_editor else ''
 
     rotate_buttons = '''
         <div class="rotate-btns">
@@ -2782,6 +3241,151 @@ def get_viewer_html(role):
             <button class="rotate-btn" onclick="flipImage('horizontal')" title="Flip horizontal (mirror)">&#8644;</button>
             <button class="rotate-btn" onclick="flipImage('vertical')" title="Flip vertical">&#8645;</button>
         </div>
+    ''' if is_editor else ''
+
+    # Admin-only user management modal (plain string — no f-string — so JS braces are literal)
+    user_management_modal = '''
+    <div class="modal-overlay" id="userManagementModal" style="z-index:25000;">
+        <div class="modal" style="max-width:700px;width:95%;max-height:80vh;overflow-y:auto;">
+            <h2 style="margin-bottom:16px;">&#128101; Gestione utenti</h2>
+            <div id="umPending" style="margin-bottom:24px;">
+                <h3 style="color:#ff9800;margin-bottom:8px;">In attesa di approvazione</h3>
+                <div id="umPendingList" style="font-size:0.9em;">Caricamento...</div>
+            </div>
+            <div id="umActive">
+                <h3 style="color:#4caf50;margin-bottom:8px;">Utenti attivi</h3>
+                <div id="umActiveList" style="font-size:0.9em;">Caricamento...</div>
+            </div>
+            <div style="margin-top:20px;text-align:right;">
+                <button class="modal-btn cancel" onclick="closeModal(\'userManagementModal\')">Chiudi</button>
+            </div>
+        </div>
+    </div>
+    ''' if is_admin else ''
+
+    user_management_js = '''
+        function umEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+        var umEmailById = {};
+
+        function openUserManagement() {
+            document.getElementById('userManagementModal').classList.add('active');
+            loadUsers();
+        }
+
+        function loadUsers() {
+            fetch('/api/admin/users')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var users = data.users || [];
+                    umEmailById = {};
+                    users.forEach(function(u) { umEmailById[u.id] = u.email; });
+                    renderPendingUsers(users.filter(function(u) { return u.status === 'pending'; }));
+                    renderActiveUsers(users.filter(function(u) { return u.status !== 'pending'; }));
+                })
+                .catch(function(e) {
+                    document.getElementById('umPendingList').textContent = 'Errore: ' + e;
+                    document.getElementById('umActiveList').textContent = 'Errore: ' + e;
+                });
+        }
+
+        function renderPendingUsers(users) {
+            var el = document.getElementById('umPendingList');
+            if (!users.length) { el.innerHTML = '<em style="color:#888;">Nessuna richiesta in attesa.</em>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;">';
+            html += '<tr style="border-bottom:1px solid #444;"><th style="text-align:left;padding:4px 8px;">Email</th><th style="text-align:left;padding:4px 8px;">Richiesta</th><th style="padding:4px 8px;">Azioni</th></tr>';
+            users.forEach(function(u) {
+                html += '<tr style="border-bottom:1px solid #333;">';
+                html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
+                html += '<td style="padding:6px 8px;color:#888;">' + umEsc(u.created_at || '') + '</td>';
+                html += '<td style="padding:6px 8px;white-space:nowrap;">';
+                html += '<button onclick="umApprove(' + Number(u.id) + ')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
+                html += '<button onclick="umReject(' + Number(u.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
+                html += '</td></tr>';
+            });
+            html += '</table>';
+            el.innerHTML = html;
+        }
+
+        function renderActiveUsers(users) {
+            var el = document.getElementById('umActiveList');
+            if (!users.length) { el.innerHTML = '<em style="color:#888;">Nessun utente attivo.</em>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;">';
+            html += '<tr style="border-bottom:1px solid #444;"><th style="text-align:left;padding:4px 8px;">Email</th><th style="padding:4px 8px;">Ruolo</th><th style="padding:4px 8px;">Ultimo accesso</th><th style="padding:4px 8px;">Stato</th><th style="padding:4px 8px;">Azioni</th></tr>';
+            users.forEach(function(u) {
+                var isSuspended = (u.status === 'suspended');
+                html += '<tr style="border-bottom:1px solid #333;' + (isSuspended ? 'opacity:0.6;' : '') + '">';
+                html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
+                html += '<td style="padding:6px 8px;text-align:center;">';
+                html += '<select onchange="umSetRole(' + Number(u.id) + ', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
+                html += '<option value="iscritto"' + (u.role === 'iscritto' ? ' selected' : '') + '>Iscritto</option>';
+                html += '<option value="editor"' + (u.role === 'editor' ? ' selected' : '') + '>Editor</option>';
+                html += '</select>';
+                html += '</td>';
+                html += '<td style="padding:6px 8px;color:#888;text-align:center;">' + umEsc(u.last_login || '—') + '</td>';
+                html += '<td style="padding:6px 8px;text-align:center;color:' + (isSuspended ? '#f44336' : '#4caf50') + ';">' + (isSuspended ? 'Sospeso' : 'Attivo') + '</td>';
+                html += '<td style="padding:6px 8px;white-space:nowrap;text-align:center;">';
+                if (isSuspended) {
+                    html += '<button onclick="umSuspend(' + Number(u.id) + ', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
+                } else {
+                    html += '<button onclick="umSuspend(' + Number(u.id) + ', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
+                }
+                html += '<button onclick="umDelete(' + Number(u.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                html += '</td></tr>';
+            });
+            html += '</table>';
+            el.innerHTML = html;
+        }
+
+        function umApprove(userId) {
+            fetch('/api/admin/users/approve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umReject(userId) {
+            fetch('/api/admin/users/reject', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umSetRole(userId, newRole) {
+            fetch('/api/admin/users/role', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, role: newRole})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umSuspend(userId, suspend) {
+            fetch('/api/admin/users/suspend', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, suspend: suspend})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umDelete(userId) {
+            var email = umEmailById[userId] || ('utente #' + userId);
+            if (!confirm('Eliminare definitivamente ' + email + '?')) return;
+            fetch('/api/admin/users?user_id=' + encodeURIComponent(userId), {
+                method: 'DELETE'
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
     ''' if is_admin else ''
 
     return f'''<!DOCTYPE html>
@@ -2815,7 +3419,7 @@ def get_viewer_html(role):
         }}
         .header-buttons {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
         .user-badge {{
-            background: {'#4caf50' if is_admin else '#2196f3'};
+            background: {'#4caf50' if is_admin else ('#ff9800' if is_editor else ('#2196f3' if is_member else '#9e9e9e'))};
             color: white;
             padding: 4px 12px;
             border-radius: 12px;
@@ -4322,12 +4926,13 @@ def get_viewer_html(role):
         <h1>&#127994; CeramicaDatabase</h1>
         <div class="collection-tabs" id="collectionTabs"></div>
         <div class="header-buttons">
-            <span class="user-badge">{'ADMIN' if is_admin else 'VIEWER'}</span>
+            <span class="user-badge">{'ADMIN' if is_admin else ('EDITOR' if is_editor else ('ISCRITTO' if is_member else 'OSPITE'))}</span>
             <span class="selection-count" id="selectionCount">0 sel.</span>
-            <button class="action-btn ml-btn" onclick="openMlClassifier()">&#129504; ML Classify</button>
+            {'<button class="action-btn ml-btn" onclick="openMlClassifier()">&#129504; ML Classify</button>' if is_member else ''}
             <button class="action-btn pdf-btn" onclick="openPdfAtPage()">&#128196; PDF</button>
-            {'<button class="action-btn select-btn" id="selectBtn" onclick="toggleSelectMode()">&#9745; Select</button>' if is_admin else ''}
+            {'<button class="action-btn select-btn" id="selectBtn" onclick="toggleSelectMode()">&#9745; Select</button>' if is_editor else ''}
             {admin_buttons}
+            {'<button class="action-btn" onclick="openUserManagement()" style="background:#7c3aed;">&#128101; Gestione utenti</button>' if is_admin else ''}
             <button class="action-btn logout-btn" onclick="logout()">Logout</button>
         </div>
     </div>
@@ -4645,6 +5250,8 @@ def get_viewer_html(role):
         </div>
     </div>
 
+    {user_management_modal}
+
     <!-- PDF Viewer Modal -->
     <div class="pdf-modal" id="pdfModal">
         <div class="pdf-header">
@@ -4954,6 +5561,7 @@ def get_viewer_html(role):
 
     <script>
         const isAdmin = {'true' if is_admin else 'false'};
+        const isEditor = {'true' if is_editor else 'false'};
         let data = [];
         let filteredData = [];
         let currentIndex = 0;
@@ -5030,7 +5638,7 @@ def get_viewer_html(role):
             document.getElementById('searchInput').addEventListener('input', applyFilters);
 
             // Setup autocomplete for edit fields
-            if (isAdmin) {{
+            if (isEditor) {{
                 setupAutocomplete('editDecoration', 'decorationList', 'decoration');
                 setupAutocomplete('editVesselType', 'vesselTypeList', 'vessel_type');
                 setupAutocomplete('editPartType', 'partTypeList', 'part_type');
@@ -5290,7 +5898,7 @@ def get_viewer_html(role):
         }}
 
         function rotateImage(degrees) {{
-            if (!isAdmin) return;
+            if (!isEditor) return;
             const item = filteredData[currentIndex];
             if (!item) return;
 
@@ -5312,7 +5920,7 @@ def get_viewer_html(role):
         }}
 
         function flipImage(direction) {{
-            if (!isAdmin) return;
+            if (!isEditor) return;
             const item = filteredData[currentIndex];
             if (!item) return;
 
@@ -6765,7 +7373,7 @@ def get_viewer_html(role):
         }}
 
         function openEditModal() {{
-            if (!isAdmin || filteredData.length === 0) return;
+            if (!isEditor || filteredData.length === 0) return;
             const item = filteredData[currentIndex];
             document.getElementById('editDecoration').value = item.decoration || '';
             document.getElementById('editDecorationCode').value = item.decoration_code || '';
@@ -6825,7 +7433,7 @@ def get_viewer_html(role):
         }}
 
         function openBatchEditModal() {{
-            if (!isAdmin || selectedItems.size === 0) return;
+            if (!isEditor || selectedItems.size === 0) return;
             document.getElementById('batchCount').textContent = selectedItems.size;
             document.getElementById('batchDecoration').value = '';
             document.getElementById('batchVesselType').value = '';
@@ -6834,6 +7442,7 @@ def get_viewer_html(role):
         }}
 
         function saveBatchEdit() {{
+            if (!isEditor) return;
             const fields = {{}};
             const dec = document.getElementById('batchDecoration').value;
             const vessel = document.getElementById('batchVesselType').value;
@@ -6871,7 +7480,7 @@ def get_viewer_html(role):
         }}
 
         function confirmDelete() {{
-            if (!isAdmin || filteredData.length === 0) return;
+            if (!isEditor || filteredData.length === 0) return;
             const item = filteredData[currentIndex];
             document.getElementById('deleteMessage').innerHTML = `Delete <strong>${{item.id}}</strong>?`;
             document.getElementById('deleteModal').dataset.batch = '';
@@ -6879,7 +7488,7 @@ def get_viewer_html(role):
         }}
 
         function confirmBatchDelete() {{
-            if (!isAdmin || selectedItems.size === 0) return;
+            if (!isEditor || selectedItems.size === 0) return;
             document.getElementById('deleteMessage').innerHTML = `Delete <strong>${{selectedItems.size}} items</strong>?`;
             document.getElementById('deleteModal').dataset.batch = 'true';
             document.getElementById('deleteModal').classList.add('active');
@@ -7079,8 +7688,8 @@ def get_viewer_html(role):
             if (e.key === 'ArrowLeft') navigate(-1);
             if (e.key === 'ArrowRight') navigate(1);
             if (e.key === 'p' || e.key === 'P') openPdfAtPage();
-            if (isAdmin && (e.key === 'e' || e.key === 'E')) openEditModal();
-            if (isAdmin && (e.key === 'r' || e.key === 'R')) rotateImage(90);
+            if (isEditor && (e.key === 'e' || e.key === 'E')) openEditModal();
+            if (isEditor && (e.key === 'r' || e.key === 'R')) rotateImage(90);
             if (e.key === 'm' || e.key === 'M') toggleMeasure();
             if (e.key === 'Escape') {{
                 closeModal('deleteModal');
@@ -7421,8 +8030,8 @@ def get_viewer_html(role):
         }}
 
         function saveMeasurements() {{
-            if (!isAdmin) {{
-                alert('Only admins can save measurements');
+            if (!isEditor) {{
+                alert('Only editors can save measurements');
                 return;
             }}
 
@@ -8303,6 +8912,8 @@ def get_viewer_html(role):
                 viewer3dControls.autoRotateSpeed = 2.0;
             }}
         }}
+
+        {user_management_js}
 
     </script>
 </body>
