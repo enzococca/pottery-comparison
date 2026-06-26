@@ -141,3 +141,24 @@ def test_create_session_carries_user(monkeypatch):
     assert sess["role"] == "iscritto"
     assert sess["user_id"] == 42
     assert sess["email"] == "x@example.com"
+
+
+def test_migrate_reconstructs_username_not_null_then_create_user_works():
+    # Reproduce the real init_db schema where username is UNIQUE NOT NULL.
+    conn = _fresh_conn()
+    conn.execute("""CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'viewer',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    viewer_app.migrate_users_table(conn)
+    # username must now be nullable (notnull flag == 0)
+    notnull = {r[1]: r[3] for r in conn.execute("PRAGMA table_info(users)")}
+    assert notnull["username"] == 0
+    # create_user (which never supplies username) must now succeed
+    uid = viewer_app.create_user(conn, "reg@example.com", "pw12345678")
+    row = viewer_app.get_user_by_id(conn, uid)
+    assert row["username"] is None
+    assert row["role"] == "iscritto"
+    assert row["status"] == "pending"
