@@ -2833,13 +2833,19 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'Le annotazioni richiedono un account registrato'}, 403)
                 return
             image = post_data.get('image') or ''
-            note = (post_data.get('note') or '')[:4000]
-            if not image or len(image) > 6_000_000:
+            note = (post_data.get('note') or '')
+            note = note[:4000] if isinstance(note, str) else ''
+            if not isinstance(image, str) or not image or len(image) > 6_000_000:
                 self.send_json({'error': 'Immagine mancante o troppo grande'}, 400)
+                return
+            if not image.startswith('data:image/'):
+                self.send_json({'error': 'Formato immagine non valido'}, 400)
                 return
             allowed = ('id', 'collection', 'image_path', 'similarity',
                        'coarse_similarity', 'image_type', 'macro_period', 'period')
-            raw = post_data.get('results') or []
+            raw = post_data.get('results')
+            if not isinstance(raw, list):
+                raw = []
             results = [{k: m.get(k) for k in allowed} for m in raw[:30] if isinstance(m, dict)]
             conn = get_db()
             try:
@@ -3585,7 +3591,7 @@ def get_viewer_html(role):
                 .then(function(d) {
                     var html = '<div style="margin-top:16px;border-top:1px solid #444;padding-top:16px;">';
                     html += '<h4 style="margin-bottom:8px;">Dettaglio annotazione</h4>';
-                    html += '<img src="' + d.image_data + '" style="max-width:200px;max-height:200px;object-fit:contain;border:1px solid #444;border-radius:4px;margin-bottom:8px;">';
+                    html += '<img src="' + annEsc(d.image_data) + '" style="max-width:200px;max-height:200px;object-fit:contain;border:1px solid #444;border-radius:4px;margin-bottom:8px;">';
                     html += '<p style="margin-bottom:8px;color:#ccc;">' + annEsc(d.note_text || '(senza nota)') + '</p>';
                     if (d.results && d.results.length) {
                         html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
@@ -3593,7 +3599,7 @@ def get_viewer_html(role):
                             html += '<div style="text-align:center;font-size:0.75em;">';
                             html += '<img src="' + annEsc(m.image_path || '') + '" style="width:60px;height:60px;object-fit:contain;border:1px solid #333;border-radius:3px;display:block;">';
                             html += '<div>' + annEsc(m.id || '') + '</div>';
-                            html += '<div style="color:#4fc3f7;">' + (m.similarity != null ? m.similarity + '%' : '') + '</div>';
+                            html += '<div style="color:#4fc3f7;">' + (m.similarity != null ? annEsc(String(m.similarity)) + '%' : '') + '</div>';
                             html += '</div>';
                         });
                         html += '</div>';
