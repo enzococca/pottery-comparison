@@ -908,7 +908,7 @@ git commit -m "feat(auth): re-gate routes (public read, iscritto for ML/3D, edit
 
 - [ ] **Step 1: Aggiornare il markup**
 
-Sostituire il form della `WELCOME_PAGE` con due schede/sezioni — **Login** (email + password + bottone) e **Registrati** (email + password + conferma) — più un link/sezione "Accesso amministratore" (solo password). Ricordare il **raddoppio delle graffe** `{{ }}` in tutto il CSS/JS della f-string. Comportamento JS richiesto:
+Sostituire il form della `WELCOME_PAGE` con due schede/sezioni — **Login** (email + password + bottone) e **Registrati** (email + password + conferma) — più un link/sezione "Accesso amministratore" (solo password). NOTA: `WELCOME_PAGE` (riga ~2780) è una **stringa semplice** triple-quoted inviata con `send_html(WELCOME_PAGE)` **senza** `.format()`/f-string → le graffe JS/CSS sono **letterali, NON vanno raddoppiate** (il raddoppio `{{ }}` serve solo in `get_viewer_html`, Task 11, che è una f-string). Comportamento JS richiesto:
 - Login: `fetch('/api/login', {method:'POST', body: JSON.stringify({email, password})})`; su 200 → `window.location='/viewer'`; su 403 con `status==='pending'` → messaggio "Account in attesa di approvazione"; su 401 → "Credenziali non valide".
 - Registrazione: valida che le due password coincidano e ≥8 char lato client; `fetch('/api/register', ...)`; su success → messaggio "Registrazione ricevuta, in attesa di approvazione" e torna al login.
 - Accesso admin: `fetch('/api/login', {body: JSON.stringify({password})})` (email vuota).
