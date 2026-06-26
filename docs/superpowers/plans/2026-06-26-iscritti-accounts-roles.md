@@ -789,12 +789,12 @@ In `do_GET`, nella zona delle API protette (dopo `/api/data`, ~riga 1956):
 
 - [ ] **Step 3: Aggiungere l'eliminazione in `do_DELETE`**
 
-In `do_DELETE`, dopo il `require_admin()` iniziale (~riga 2453), il gate admin copre già tutto l'handler. Aggiungere il ramo:
+`do_DELETE` (~riga 2449) fa `parsed = urlparse(self.path)` + `query = parse_qs(parsed.query)` e ha un gate `require_admin()` globale in cima (~riga 2453) che al momento di questo task copre già tutto l'handler — quindi il ramo admin-users è protetto correttamente. Legge i parametri **solo dalla query string** (nessun body). Aggiungere il ramo prima del `self.send_json({'error': 'Not found'}, 404)` finale:
 
 ```python
         # Elimina utente (admin)
         if parsed.path == '/api/admin/users':
-            user_id = query.get('user_id', [None])[0] or (post_data.get('user_id') if 'post_data' in dir() else None)
+            user_id = query.get('user_id', [None])[0]
             if not user_id:
                 self.send_json({'error': 'user_id mancante'}, 400)
                 return
@@ -807,7 +807,7 @@ In `do_DELETE`, dopo il `require_admin()` iniziale (~riga 2453), il gate admin c
             return
 ```
 
-> Nota: verificare come `do_DELETE` legge i parametri (query vs body) e usare lo stesso pattern degli altri rami delete già presenti; usare `query` se l'handler fa `urlparse`/`parse_qs` in cima (come `do_GET`).
+La UI (Task 11) chiama quindi `DELETE /api/admin/users?user_id=N`. Il gate per-ramo viene sistemato nel Task 9 (delete-image → editor, admin/users → admin).
 
 - [ ] **Step 4: Verifica manuale (curl) — ciclo completo**
 
