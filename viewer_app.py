@@ -3255,6 +3255,8 @@ def get_viewer_html(role):
     ''' if is_admin else ''
 
     user_management_js = '''
+        function umEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
         function openUserManagement() {
             document.getElementById('userManagementModal').classList.add('active');
             loadUsers();
@@ -3280,11 +3282,11 @@ def get_viewer_html(role):
             html += '<tr style="border-bottom:1px solid #444;"><th style="text-align:left;padding:4px 8px;">Email</th><th style="text-align:left;padding:4px 8px;">Richiesta</th><th style="padding:4px 8px;">Azioni</th></tr>';
             users.forEach(function(u) {
                 html += '<tr style="border-bottom:1px solid #333;">';
-                html += '<td style="padding:6px 8px;">' + u.email + '</td>';
+                html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
                 html += '<td style="padding:6px 8px;color:#888;">' + (u.created_at || '') + '</td>';
                 html += '<td style="padding:6px 8px;white-space:nowrap;">';
-                html += '<button onclick="umApprove(\'' + u.id + '\')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
-                html += '<button onclick="umReject(\'' + u.id + '\')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
+                html += '<button onclick="umApprove(\'' + umEsc(u.id) + '\')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
+                html += '<button onclick="umReject(\'' + umEsc(u.id) + '\')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
                 html += '</td></tr>';
             });
             html += '</table>';
@@ -3299,9 +3301,9 @@ def get_viewer_html(role):
             users.forEach(function(u) {
                 var isSuspended = (u.status === 'suspended');
                 html += '<tr style="border-bottom:1px solid #333;' + (isSuspended ? 'opacity:0.6;' : '') + '">';
-                html += '<td style="padding:6px 8px;">' + u.email + '</td>';
+                html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
                 html += '<td style="padding:6px 8px;text-align:center;">';
-                html += '<select onchange="umSetRole(\'' + u.id + '\', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
+                html += '<select onchange="umSetRole(\'' + umEsc(u.id) + '\', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
                 html += '<option value="iscritto"' + (u.role === 'iscritto' ? ' selected' : '') + '>Iscritto</option>';
                 html += '<option value="editor"' + (u.role === 'editor' ? ' selected' : '') + '>Editor</option>';
                 html += '</select>';
@@ -3310,11 +3312,11 @@ def get_viewer_html(role):
                 html += '<td style="padding:6px 8px;text-align:center;color:' + (isSuspended ? '#f44336' : '#4caf50') + ';">' + (isSuspended ? 'Sospeso' : 'Attivo') + '</td>';
                 html += '<td style="padding:6px 8px;white-space:nowrap;text-align:center;">';
                 if (isSuspended) {
-                    html += '<button onclick="umSuspend(\'' + u.id + '\', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
+                    html += '<button onclick="umSuspend(\'' + umEsc(u.id) + '\', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
                 } else {
-                    html += '<button onclick="umSuspend(\'' + u.id + '\', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
+                    html += '<button onclick="umSuspend(\'' + umEsc(u.id) + '\', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
                 }
-                html += '<button onclick="umDelete(\'' + u.id + '\', \'' + u.email + '\')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                html += '<button onclick="umDelete(\'' + umEsc(u.id) + '\', \'' + umEsc(u.email) + '\')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
                 html += '</td></tr>';
             });
             html += '</table>';
@@ -5545,7 +5547,6 @@ def get_viewer_html(role):
     <script>
         const isAdmin = {'true' if is_admin else 'false'};
         const isEditor = {'true' if is_editor else 'false'};
-        const isMember = {'true' if is_member else 'false'};
         let data = [];
         let filteredData = [];
         let currentIndex = 0;
@@ -7426,6 +7427,7 @@ def get_viewer_html(role):
         }}
 
         function saveBatchEdit() {{
+            if (!isEditor) return;
             const fields = {{}};
             const dec = document.getElementById('batchDecoration').value;
             const vessel = document.getElementById('batchVesselType').value;
