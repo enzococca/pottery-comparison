@@ -2276,9 +2276,35 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Login
         if parsed.path == '/api/login':
+            email = (post_data.get('email') or '').strip().lower()
             password = post_data.get('password', '')
-            role = verify_credentials(password)
 
+            if email:
+                conn = get_db()
+                try:
+                    user = get_user_by_email(conn, email)
+                    if not user or not verify_password_salted(password, user['password_hash']):
+                        self.send_json({'success': False, 'error': 'Credenziali non valide'}, 401)
+                        return
+                    if user['status'] == 'pending':
+                        self.send_json({'success': False, 'error': 'Account in attesa di approvazione', 'status': 'pending'}, 403)
+                        return
+                    if user['status'] != 'approved':
+                        self.send_json({'success': False, 'error': 'Account non attivo', 'status': user['status']}, 403)
+                        return
+                    touch_last_login(conn, user['id'])
+                    token = create_session(user['role'], user_id=user['id'], email=user['email'])
+                finally:
+                    conn.close()
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Set-Cookie', f'session={token}; Path=/; HttpOnly; SameSite=Strict')
+                self.end_headers()
+                self.wfile.write(json.dumps({'success': True, 'role': user['role']}).encode())
+                return
+
+            # bootstrap admin (email vuota, solo password condivisa)
+            role = verify_credentials(password)
             if role:
                 token = create_session(role)
                 self.send_response(200)
@@ -2287,7 +2313,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({'success': True, 'role': role}).encode())
             else:
-                self.send_json({'success': False, 'error': 'Invalid credentials'})
+                self.send_json({'success': False, 'error': 'Credenziali non valide'}, 401)
             return
 
         # Registrazione iscritto (pubblica)
@@ -2315,6 +2341,14 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # Logout
         if parsed.path == '/api/logout':
+            session_data = get_session(self.headers.get('Cookie'))
+            cookies = http.cookies.SimpleCookie()
+            try:
+                cookies.load(self.headers.get('Cookie') or '')
+                if 'session' in cookies:
+                    SESSIONS.pop(cookies['session'].value, None)
+            except Exception:
+                pass
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Set-Cookie', 'session=; Path=/; Max-Age=0')
