@@ -3215,12 +3215,15 @@ WELCOME_PAGE = '''<!DOCTYPE html>
 def get_viewer_html(role):
     """Generate viewer HTML with role-based UI"""
     is_admin = role == 'admin'
+    is_editor = role in ('editor', 'admin')
+    is_member = role in ('iscritto', 'editor', 'admin')
+
     admin_buttons = '''
         <button class="action-btn edit-btn" onclick="openEditModal()">&#9998; Edit</button>
         <button class="action-btn batch-btn" id="batchEditBtn" onclick="openBatchEditModal()">&#9998; Edit Sel.</button>
         <button class="action-btn batch-btn" id="batchDeleteBtn" onclick="confirmBatchDelete()">&#128465; Delete Sel.</button>
         <button class="action-btn delete-btn" onclick="confirmDelete()">&#128465;</button>
-    ''' if is_admin else ''
+    ''' if is_editor else ''
 
     rotate_buttons = '''
         <div class="rotate-btns">
@@ -3229,6 +3232,143 @@ def get_viewer_html(role):
             <button class="rotate-btn" onclick="flipImage('horizontal')" title="Flip horizontal (mirror)">&#8644;</button>
             <button class="rotate-btn" onclick="flipImage('vertical')" title="Flip vertical">&#8645;</button>
         </div>
+    ''' if is_editor else ''
+
+    # Admin-only user management modal (plain string — no f-string — so JS braces are literal)
+    user_management_modal = '''
+    <div class="modal-overlay" id="userManagementModal" style="z-index:25000;">
+        <div class="modal" style="max-width:700px;width:95%;max-height:80vh;overflow-y:auto;">
+            <h2 style="margin-bottom:16px;">&#128101; Gestione utenti</h2>
+            <div id="umPending" style="margin-bottom:24px;">
+                <h3 style="color:#ff9800;margin-bottom:8px;">In attesa di approvazione</h3>
+                <div id="umPendingList" style="font-size:0.9em;">Caricamento...</div>
+            </div>
+            <div id="umActive">
+                <h3 style="color:#4caf50;margin-bottom:8px;">Utenti attivi</h3>
+                <div id="umActiveList" style="font-size:0.9em;">Caricamento...</div>
+            </div>
+            <div style="margin-top:20px;text-align:right;">
+                <button class="modal-btn cancel" onclick="closeModal(\'userManagementModal\')">Chiudi</button>
+            </div>
+        </div>
+    </div>
+    ''' if is_admin else ''
+
+    user_management_js = '''
+        function openUserManagement() {
+            document.getElementById('userManagementModal').classList.add('active');
+            loadUsers();
+        }
+
+        function loadUsers() {
+            fetch('/api/admin/users')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    renderPendingUsers(data.pending || []);
+                    renderActiveUsers(data.active || []);
+                })
+                .catch(function(e) {
+                    document.getElementById('umPendingList').textContent = 'Errore: ' + e;
+                    document.getElementById('umActiveList').textContent = 'Errore: ' + e;
+                });
+        }
+
+        function renderPendingUsers(users) {
+            var el = document.getElementById('umPendingList');
+            if (!users.length) { el.innerHTML = '<em style="color:#888;">Nessuna richiesta in attesa.</em>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;">';
+            html += '<tr style="border-bottom:1px solid #444;"><th style="text-align:left;padding:4px 8px;">Email</th><th style="text-align:left;padding:4px 8px;">Richiesta</th><th style="padding:4px 8px;">Azioni</th></tr>';
+            users.forEach(function(u) {
+                html += '<tr style="border-bottom:1px solid #333;">';
+                html += '<td style="padding:6px 8px;">' + u.email + '</td>';
+                html += '<td style="padding:6px 8px;color:#888;">' + (u.created_at || '') + '</td>';
+                html += '<td style="padding:6px 8px;white-space:nowrap;">';
+                html += '<button onclick="umApprove(\'' + u.id + '\')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
+                html += '<button onclick="umReject(\'' + u.id + '\')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
+                html += '</td></tr>';
+            });
+            html += '</table>';
+            el.innerHTML = html;
+        }
+
+        function renderActiveUsers(users) {
+            var el = document.getElementById('umActiveList');
+            if (!users.length) { el.innerHTML = '<em style="color:#888;">Nessun utente attivo.</em>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;">';
+            html += '<tr style="border-bottom:1px solid #444;"><th style="text-align:left;padding:4px 8px;">Email</th><th style="padding:4px 8px;">Ruolo</th><th style="padding:4px 8px;">Ultimo accesso</th><th style="padding:4px 8px;">Stato</th><th style="padding:4px 8px;">Azioni</th></tr>';
+            users.forEach(function(u) {
+                var isSuspended = (u.status === 'suspended');
+                html += '<tr style="border-bottom:1px solid #333;' + (isSuspended ? 'opacity:0.6;' : '') + '">';
+                html += '<td style="padding:6px 8px;">' + u.email + '</td>';
+                html += '<td style="padding:6px 8px;text-align:center;">';
+                html += '<select onchange="umSetRole(\'' + u.id + '\', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
+                html += '<option value="iscritto"' + (u.role === 'iscritto' ? ' selected' : '') + '>Iscritto</option>';
+                html += '<option value="editor"' + (u.role === 'editor' ? ' selected' : '') + '>Editor</option>';
+                html += '</select>';
+                html += '</td>';
+                html += '<td style="padding:6px 8px;color:#888;text-align:center;">' + (u.last_login || '—') + '</td>';
+                html += '<td style="padding:6px 8px;text-align:center;color:' + (isSuspended ? '#f44336' : '#4caf50') + ';">' + (isSuspended ? 'Sospeso' : 'Attivo') + '</td>';
+                html += '<td style="padding:6px 8px;white-space:nowrap;text-align:center;">';
+                if (isSuspended) {
+                    html += '<button onclick="umSuspend(\'' + u.id + '\', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
+                } else {
+                    html += '<button onclick="umSuspend(\'' + u.id + '\', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
+                }
+                html += '<button onclick="umDelete(\'' + u.id + '\', \'' + u.email + '\')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                html += '</td></tr>';
+            });
+            html += '</table>';
+            el.innerHTML = html;
+        }
+
+        function umApprove(userId) {
+            fetch('/api/admin/users/approve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umReject(userId) {
+            fetch('/api/admin/users/reject', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umSetRole(userId, newRole) {
+            fetch('/api/admin/users/role', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, role: newRole})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umSuspend(userId, suspend) {
+            fetch('/api/admin/users/suspend', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, suspend: suspend})
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function umDelete(userId, email) {
+            if (!confirm('Eliminare definitivamente ' + email + '?')) return;
+            fetch('/api/admin/users?user_id=' + encodeURIComponent(userId), {
+                method: 'DELETE'
+            }).then(function(r) { return r.json(); })
+              .then(function() { loadUsers(); })
+              .catch(function(e) { alert('Errore: ' + e); });
+        }
     ''' if is_admin else ''
 
     return f'''<!DOCTYPE html>
@@ -3262,7 +3402,7 @@ def get_viewer_html(role):
         }}
         .header-buttons {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
         .user-badge {{
-            background: {'#4caf50' if is_admin else '#2196f3'};
+            background: {'#4caf50' if is_admin else ('#ff9800' if is_editor else ('#2196f3' if is_member else '#9e9e9e'))};
             color: white;
             padding: 4px 12px;
             border-radius: 12px;
@@ -4769,12 +4909,13 @@ def get_viewer_html(role):
         <h1>&#127994; CeramicaDatabase</h1>
         <div class="collection-tabs" id="collectionTabs"></div>
         <div class="header-buttons">
-            <span class="user-badge">{'ADMIN' if is_admin else 'VIEWER'}</span>
+            <span class="user-badge">{'ADMIN' if is_admin else ('EDITOR' if is_editor else ('ISCRITTO' if is_member else 'OSPITE'))}</span>
             <span class="selection-count" id="selectionCount">0 sel.</span>
-            <button class="action-btn ml-btn" onclick="openMlClassifier()">&#129504; ML Classify</button>
+            {'<button class="action-btn ml-btn" onclick="openMlClassifier()">&#129504; ML Classify</button>' if is_member else ''}
             <button class="action-btn pdf-btn" onclick="openPdfAtPage()">&#128196; PDF</button>
-            {'<button class="action-btn select-btn" id="selectBtn" onclick="toggleSelectMode()">&#9745; Select</button>' if is_admin else ''}
+            {'<button class="action-btn select-btn" id="selectBtn" onclick="toggleSelectMode()">&#9745; Select</button>' if is_editor else ''}
             {admin_buttons}
+            {'<button class="action-btn" onclick="openUserManagement()" style="background:#7c3aed;">&#128101; Gestione utenti</button>' if is_admin else ''}
             <button class="action-btn logout-btn" onclick="logout()">Logout</button>
         </div>
     </div>
@@ -5092,6 +5233,8 @@ def get_viewer_html(role):
         </div>
     </div>
 
+    {user_management_modal}
+
     <!-- PDF Viewer Modal -->
     <div class="pdf-modal" id="pdfModal">
         <div class="pdf-header">
@@ -5401,6 +5544,8 @@ def get_viewer_html(role):
 
     <script>
         const isAdmin = {'true' if is_admin else 'false'};
+        const isEditor = {'true' if is_editor else 'false'};
+        const isMember = {'true' if is_member else 'false'};
         let data = [];
         let filteredData = [];
         let currentIndex = 0;
@@ -5477,7 +5622,7 @@ def get_viewer_html(role):
             document.getElementById('searchInput').addEventListener('input', applyFilters);
 
             // Setup autocomplete for edit fields
-            if (isAdmin) {{
+            if (isEditor) {{
                 setupAutocomplete('editDecoration', 'decorationList', 'decoration');
                 setupAutocomplete('editVesselType', 'vesselTypeList', 'vessel_type');
                 setupAutocomplete('editPartType', 'partTypeList', 'part_type');
@@ -5737,7 +5882,7 @@ def get_viewer_html(role):
         }}
 
         function rotateImage(degrees) {{
-            if (!isAdmin) return;
+            if (!isEditor) return;
             const item = filteredData[currentIndex];
             if (!item) return;
 
@@ -5759,7 +5904,7 @@ def get_viewer_html(role):
         }}
 
         function flipImage(direction) {{
-            if (!isAdmin) return;
+            if (!isEditor) return;
             const item = filteredData[currentIndex];
             if (!item) return;
 
@@ -7212,7 +7357,7 @@ def get_viewer_html(role):
         }}
 
         function openEditModal() {{
-            if (!isAdmin || filteredData.length === 0) return;
+            if (!isEditor || filteredData.length === 0) return;
             const item = filteredData[currentIndex];
             document.getElementById('editDecoration').value = item.decoration || '';
             document.getElementById('editDecorationCode').value = item.decoration_code || '';
@@ -7272,7 +7417,7 @@ def get_viewer_html(role):
         }}
 
         function openBatchEditModal() {{
-            if (!isAdmin || selectedItems.size === 0) return;
+            if (!isEditor || selectedItems.size === 0) return;
             document.getElementById('batchCount').textContent = selectedItems.size;
             document.getElementById('batchDecoration').value = '';
             document.getElementById('batchVesselType').value = '';
@@ -7318,7 +7463,7 @@ def get_viewer_html(role):
         }}
 
         function confirmDelete() {{
-            if (!isAdmin || filteredData.length === 0) return;
+            if (!isEditor || filteredData.length === 0) return;
             const item = filteredData[currentIndex];
             document.getElementById('deleteMessage').innerHTML = `Delete <strong>${{item.id}}</strong>?`;
             document.getElementById('deleteModal').dataset.batch = '';
@@ -7326,7 +7471,7 @@ def get_viewer_html(role):
         }}
 
         function confirmBatchDelete() {{
-            if (!isAdmin || selectedItems.size === 0) return;
+            if (!isEditor || selectedItems.size === 0) return;
             document.getElementById('deleteMessage').innerHTML = `Delete <strong>${{selectedItems.size}} items</strong>?`;
             document.getElementById('deleteModal').dataset.batch = 'true';
             document.getElementById('deleteModal').classList.add('active');
@@ -7526,8 +7671,8 @@ def get_viewer_html(role):
             if (e.key === 'ArrowLeft') navigate(-1);
             if (e.key === 'ArrowRight') navigate(1);
             if (e.key === 'p' || e.key === 'P') openPdfAtPage();
-            if (isAdmin && (e.key === 'e' || e.key === 'E')) openEditModal();
-            if (isAdmin && (e.key === 'r' || e.key === 'R')) rotateImage(90);
+            if (isEditor && (e.key === 'e' || e.key === 'E')) openEditModal();
+            if (isEditor && (e.key === 'r' || e.key === 'R')) rotateImage(90);
             if (e.key === 'm' || e.key === 'M') toggleMeasure();
             if (e.key === 'Escape') {{
                 closeModal('deleteModal');
@@ -7868,8 +8013,8 @@ def get_viewer_html(role):
         }}
 
         function saveMeasurements() {{
-            if (!isAdmin) {{
-                alert('Only admins can save measurements');
+            if (!isEditor) {{
+                alert('Only editors can save measurements');
                 return;
             }}
 
@@ -8750,6 +8895,8 @@ def get_viewer_html(role):
                 viewer3dControls.autoRotateSpeed = 2.0;
             }}
         }}
+
+        {user_management_js}
 
     </script>
 </body>
