@@ -1317,6 +1317,62 @@ def init_db():
     conn.close()
 
 
+def migrate_annotations_table(conn):
+    """Idempotently create the personal comparison-annotations table."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS comparison_annotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        image_data TEXT NOT NULL,
+        note_text TEXT,
+        results_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_user ON comparison_annotations(user_id)")
+    conn.commit()
+
+
+def create_annotation(conn, user_id, image_data, note_text, results_json):
+    cur = conn.execute(
+        "INSERT INTO comparison_annotations (user_id, image_data, note_text, results_json) VALUES (?, ?, ?, ?)",
+        (user_id, image_data, note_text, results_json),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_annotations(conn, user_id):
+    rows = conn.execute(
+        """SELECT id, note_text, results_json, created_at FROM comparison_annotations
+           WHERE user_id = ? ORDER BY created_at DESC, id DESC""",
+        (user_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            count = len(json.loads(r["results_json"])) if r["results_json"] else 0
+        except (ValueError, TypeError):
+            count = 0
+        out.append({"id": r["id"], "note_text": r["note_text"],
+                    "created_at": r["created_at"], "result_count": count})
+    return out
+
+
+def get_annotation(conn, annotation_id, user_id):
+    return conn.execute(
+        "SELECT * FROM comparison_annotations WHERE id = ? AND user_id = ?",
+        (annotation_id, user_id),
+    ).fetchone()
+
+
+def delete_annotation(conn, annotation_id, user_id):
+    cur = conn.execute(
+        "DELETE FROM comparison_annotations WHERE id = ? AND user_id = ?",
+        (annotation_id, user_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def migrate_users_table(conn):
     """Idempotently bring the users table up to the per-account schema."""
     cursor = conn.cursor()
@@ -1495,6 +1551,7 @@ def run_auto_migrations():
 
     # Migrazione tabella users (account per-utente)
     migrate_users_table(conn)
+    migrate_annotations_table(conn)
 
     conn.commit()
     conn.close()
@@ -2225,6 +2282,43 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'No PDF configured for this collection'})
             return
 
+        # Lista annotazioni dell'utente corrente
+        if parsed.path == '/api/annotations':
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            if not user_id:
+                self.send_json({'annotations': []})
+                return
+            conn = get_db()
+            try:
+                anns = list_annotations(conn, user_id)
+            finally:
+                conn.close()
+            self.send_json({'annotations': anns})
+            return
+
+        # Singola annotazione (owner-only)
+        if parsed.path.startswith('/api/annotations/'):
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            ann_id = parsed.path.rsplit('/', 1)[-1]
+            conn = get_db()
+            try:
+                row = get_annotation(conn, ann_id, user_id) if user_id else None
+            finally:
+                conn.close()
+            if not row:
+                self.send_json({'error': 'Annotazione non trovata'}, 404)
+                return
+            self.send_json({
+                'id': row['id'], 'image_data': row['image_data'],
+                'note_text': row['note_text'], 'created_at': row['created_at'],
+                'results': json.loads(row['results_json']) if row['results_json'] else [],
+            })
+            return
+
         # Serve static files with caching
         # Add cache headers for images and PDFs
         if parsed.path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
@@ -2729,6 +2823,38 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'error': f'3D reconstruction failed: {str(e)}'}, 500)
             return
 
+        # Crea annotazione personale (iscritto+, owner = sessione)
+        if parsed.path == '/api/annotations':
+            if not self.require_role('iscritto'):
+                return
+            session = get_session(self.headers.get('Cookie')) or {}
+            user_id = session.get('user_id')
+            if not user_id:
+                self.send_json({'error': 'Le annotazioni richiedono un account registrato'}, 403)
+                return
+            image = post_data.get('image') or ''
+            note = (post_data.get('note') or '')
+            note = note[:4000] if isinstance(note, str) else ''
+            if not isinstance(image, str) or not image or len(image) > 6_000_000:
+                self.send_json({'error': 'Immagine mancante o troppo grande'}, 400)
+                return
+            if not image.startswith('data:image/'):
+                self.send_json({'error': 'Formato immagine non valido'}, 400)
+                return
+            allowed = ('id', 'collection', 'image_path', 'similarity',
+                       'coarse_similarity', 'image_type', 'macro_period', 'period')
+            raw = post_data.get('results')
+            if not isinstance(raw, list):
+                raw = []
+            results = [{k: m.get(k) for k in allowed} for m in raw[:30] if isinstance(m, dict)]
+            conn = get_db()
+            try:
+                rid = create_annotation(conn, user_id, image, note, json.dumps(results))
+            finally:
+                conn.close()
+            self.send_json({'success': True, 'id': rid})
+            return
+
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
@@ -2769,6 +2895,20 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             if ok:
                 drop_user_sessions(user_id)
             self.send_json({'success': True} if ok else {'error': 'Utente non trovato'}, 200 if ok else 404)
+            return
+
+        # Elimina una propria annotazione (iscritto+, owner-only)
+        if parsed.path.startswith('/api/annotations/'):
+            if not self.require_role('iscritto'):
+                return
+            user_id = (get_session(self.headers.get('Cookie')) or {}).get('user_id')
+            ann_id = parsed.path.rsplit('/', 1)[-1]
+            conn = get_db()
+            try:
+                ok = delete_annotation(conn, ann_id, user_id) if user_id else False
+            finally:
+                conn.close()
+            self.send_json({'success': True} if ok else {'error': 'Annotazione non trovata'}, 200 if ok else 404)
             return
 
         self.send_json({'error': 'Not found'}, 404)
@@ -3387,6 +3527,127 @@ def get_viewer_html(role):
               .catch(function(e) { alert('Errore: ' + e); });
         }
     ''' if is_admin else ''
+
+    annotations_js = '''
+        function annEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+        function saveAnnotation() {
+            var image = manualDrawingData || mlImageData;
+            if (!image) { alert('Carica e confronta prima un\\'immagine'); return; }
+            var note = prompt('Nota (facoltativa):', '') || '';
+            fetch('/api/annotations', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: image, note: note, results: lastSearchResults})
+            }).then(function(r) { return r.json(); })
+              .then(function(data) {
+                  if (data && data.success) { alert('Annotazione salvata.'); }
+                  else { alert('Errore: ' + ((data && data.error) || 'salvataggio non riuscito')); }
+              })
+              .catch(function(e) { alert('Errore di rete: ' + e); });
+        }
+
+        function openMyAnnotations() {
+            document.getElementById('myAnnotationsModal').classList.add('active');
+            loadAnnotations();
+        }
+
+        function loadAnnotations() {
+            var container = document.getElementById('annotationsList');
+            container.innerHTML = 'Caricamento...';
+            document.getElementById('annotationDetail').innerHTML = '';
+            fetch('/api/annotations')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var list = data.annotations || [];
+                    if (!list.length) {
+                        container.innerHTML = '<em style="color:#888;">Nessuna annotazione salvata.</em>';
+                        return;
+                    }
+                    var html = '';
+                    list.forEach(function(a) {
+                        html += '<div style="border-bottom:1px solid #333;padding:10px 0;display:flex;align-items:center;gap:10px;">';
+                        html += '<div style="flex:1;">';
+                        html += '<div style="font-size:0.95em;margin-bottom:3px;">' + annEsc(a.note_text || '(senza nota)') + '</div>';
+                        html += '<div style="font-size:0.8em;color:#888;">' + annEsc(a.created_at || '') + ' &nbsp;&middot;&nbsp; ' + a.result_count + ' match</div>';
+                        html += '</div>';
+                        html += '<button onclick="openAnnotation(' + Number(a.id) + ')" style="background:#2196f3;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Apri</button>';
+                        html += '<button onclick="reuseAnnotation(' + Number(a.id) + ')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Riusa</button>';
+                        html += '<button onclick="deleteAnnotation(' + Number(a.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                        html += '</div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(function(e) {
+                    container.innerHTML = '<em style="color:#f44336;">Errore di rete: ' + annEsc(String(e)) + '</em>';
+                });
+        }
+
+        function openAnnotation(id) {
+            var detail = document.getElementById('annotationDetail');
+            detail.innerHTML = 'Caricamento...';
+            fetch('/api/annotations/' + id)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var html = '<div style="margin-top:16px;border-top:1px solid #444;padding-top:16px;">';
+                    html += '<h4 style="margin-bottom:8px;">Dettaglio annotazione</h4>';
+                    html += '<img src="' + annEsc(d.image_data) + '" style="max-width:200px;max-height:200px;object-fit:contain;border:1px solid #444;border-radius:4px;margin-bottom:8px;">';
+                    html += '<p style="margin-bottom:8px;color:#ccc;">' + annEsc(d.note_text || '(senza nota)') + '</p>';
+                    if (d.results && d.results.length) {
+                        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
+                        d.results.forEach(function(m) {
+                            html += '<div style="text-align:center;font-size:0.75em;">';
+                            html += '<img src="' + annEsc(m.image_path || '') + '" style="width:60px;height:60px;object-fit:contain;border:1px solid #333;border-radius:3px;display:block;">';
+                            html += '<div>' + annEsc(m.id || '') + '</div>';
+                            html += '<div style="color:#4fc3f7;">' + (m.similarity != null ? annEsc(String(m.similarity)) + '%' : '') + '</div>';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    detail.innerHTML = html;
+                })
+                .catch(function(e) {
+                    detail.innerHTML = '<em style="color:#f44336;">Errore: ' + annEsc(String(e)) + '</em>';
+                });
+        }
+
+        function reuseAnnotation(id) {
+            fetch('/api/annotations/' + id)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    mlImageData = d.image_data;
+                    var preview = document.getElementById('mlPreview');
+                    if (preview) preview.src = d.image_data;
+                    closeModal('myAnnotationsModal');
+                    openMlClassifier();
+                    runSimilaritySearch();
+                })
+                .catch(function(e) { alert('Errore: ' + e); });
+        }
+
+        function deleteAnnotation(id) {
+            if (!confirm('Eliminare questa annotazione?')) return;
+            fetch('/api/annotations/' + id, {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function() { loadAnnotations(); })
+                .catch(function(e) { alert('Errore: ' + e); });
+        }
+    ''' if is_member else ''
+
+    # Member-only annotations panel modal (plain string — no f-string — so JS braces are literal)
+    annotations_modal = '''
+    <div class="modal-overlay" id="myAnnotationsModal" style="z-index:25000;">
+        <div class="modal" style="max-width:700px;width:95%;max-height:80vh;overflow-y:auto;">
+            <h2 style="margin-bottom:16px;">&#128193; Le mie annotazioni</h2>
+            <div id="annotationsList" style="min-height:60px;">Caricamento...</div>
+            <div id="annotationDetail"></div>
+            <div style="margin-top:20px;text-align:right;">
+                <button class="modal-btn cancel" onclick="closeModal(\'myAnnotationsModal\')">Chiudi</button>
+            </div>
+        </div>
+    </div>
+    ''' if is_member else ''
 
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -5252,6 +5513,8 @@ def get_viewer_html(role):
 
     {user_management_modal}
 
+    {annotations_modal}
+
     <!-- PDF Viewer Modal -->
     <div class="pdf-modal" id="pdfModal">
         <div class="pdf-header">
@@ -5490,6 +5753,8 @@ def get_viewer_html(role):
                         Upload an image to find visually similar ceramics
                     </p>
                 </div>
+                {'<button class="action-btn" onclick="saveAnnotation()" style="margin-top:10px;">&#128190; Salva annotazione</button>' if is_member else ''}
+                {'<button class="action-btn" onclick="openMyAnnotations()" style="margin-top:10px;">&#128193; Le mie annotazioni</button>' if is_member else ''}
             </div>
         </div>
     </div>
@@ -6101,6 +6366,7 @@ def get_viewer_html(role):
         let allDbImages = [];
         let realPhotoMode = false;
         let manualDrawingData = null;
+        let lastSearchResults = [];
         let preprocessedImageData = null;  // Stores preprocessed image with current parameters
         let decoDrawMode = 'draw';
         let isDecoDrawing = false;
@@ -6907,6 +7173,7 @@ def get_viewer_html(role):
                 displayStatistics(result.statistics || {{}}, result.similar_items || []);
 
                 // Display matches
+                lastSearchResults = result.similar_items || [];
                 displaySimilarMatches(result.similar_items || [], result);
 
             }} catch (err) {{
@@ -8912,6 +9179,8 @@ def get_viewer_html(role):
                 viewer3dControls.autoRotateSpeed = 2.0;
             }}
         }}
+
+        {annotations_js}
 
         {user_management_js}
 
