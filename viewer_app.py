@@ -125,7 +125,6 @@ CONFIG_FILE = "config.json"
 # Default admin password: admin2024
 ADMIN_HASH = os.environ.get('ADMIN_HASH', 'b8b8eb83374c0bf3b1c3224159f6119dbfff1b7ed6dfecdd80d4e8a895790a34')
 # Default viewer password: viewer2024
-VIEWER_HASH = os.environ.get('VIEWER_HASH', '292a886d8da982974b3e9ad1ad61c0328f075ee17cd0eb0a3aba3aa03481a3b9')
 
 # Session storage: {token: {'role': 'admin'|'viewer', 'created': timestamp}}
 SESSIONS = {}
@@ -1870,6 +1869,13 @@ def create_session(role, user_id=None, email=None):
     return token
 
 
+def drop_user_sessions(user_id):
+    """Invalidate all in-memory sessions for a user (after suspend/role-change/delete)."""
+    target = str(user_id)
+    for tok in [t for t, s in SESSIONS.items() if str(s.get('user_id')) == target]:
+        SESSIONS.pop(tok, None)
+
+
 def get_session(cookie_header):
     """Get session from cookie"""
     if not cookie_header:
@@ -2081,7 +2087,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json({'catalog': catalog, 'count': len(catalog)})
             return
 
-        # ===== PROTECTED PAGES =====
+        # ===== PUBLIC PAGES (read-only catalog) =====
 
         # Viewer page (public — serve to everyone with their current role)
         if parsed.path == '/viewer':
@@ -2090,7 +2096,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         # ===== PROTECTED API =====
 
-        # Get config (authenticated)
+        # Get config (public; includes user_role for the current session)
         if parsed.path == '/api/config':
             config = load_config()
             config['macro_periods'] = list(MACRO_PERIODS.keys())
@@ -2389,6 +2395,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             if not ok:
                 self.send_json({'error': 'Utente non trovato'}, 404)
             else:
+                # Drop cached sessions for all actions except approve
+                if not parsed.path.endswith('/approve'):
+                    drop_user_sessions(user_id)
                 self.send_json({'success': True})
             return
 
@@ -2409,7 +2418,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'success': True}).encode())
             return
 
-        # ===== ADMIN ONLY ENDPOINTS =====
+        # ===== CATALOG WRITE ENDPOINTS (editor+) =====
 
         # Update item
         if parsed.path == '/api/update-item':
@@ -2650,9 +2659,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             encoders_exist = ML_ENCODERS_PATH.exists()
             self.send_json({
                 'available': model_exists and encoders_exist,
-                'model_loaded': ML_MODEL is not None,
-                'model_path': str(ML_MODEL_PATH),
-                'encoders_path': str(ML_ENCODERS_PATH)
+                'model_loaded': ML_MODEL is not None
             })
             return
 
@@ -2759,6 +2766,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 ok = delete_user(conn, user_id)
             finally:
                 conn.close()
+            if ok:
+                drop_user_sessions(user_id)
             self.send_json({'success': True} if ok else {'error': 'Utente non trovato'}, 200 if ok else 404)
             return
 
@@ -3257,6 +3266,8 @@ def get_viewer_html(role):
     user_management_js = '''
         function umEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
+        var umEmailById = {};
+
         function openUserManagement() {
             document.getElementById('userManagementModal').classList.add('active');
             loadUsers();
@@ -3266,8 +3277,11 @@ def get_viewer_html(role):
             fetch('/api/admin/users')
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    renderPendingUsers(data.pending || []);
-                    renderActiveUsers(data.active || []);
+                    var users = data.users || [];
+                    umEmailById = {};
+                    users.forEach(function(u) { umEmailById[u.id] = u.email; });
+                    renderPendingUsers(users.filter(function(u) { return u.status === 'pending'; }));
+                    renderActiveUsers(users.filter(function(u) { return u.status !== 'pending'; }));
                 })
                 .catch(function(e) {
                     document.getElementById('umPendingList').textContent = 'Errore: ' + e;
@@ -3283,10 +3297,10 @@ def get_viewer_html(role):
             users.forEach(function(u) {
                 html += '<tr style="border-bottom:1px solid #333;">';
                 html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
-                html += '<td style="padding:6px 8px;color:#888;">' + (u.created_at || '') + '</td>';
+                html += '<td style="padding:6px 8px;color:#888;">' + umEsc(u.created_at || '') + '</td>';
                 html += '<td style="padding:6px 8px;white-space:nowrap;">';
-                html += '<button onclick="umApprove(\'' + umEsc(u.id) + '\')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
-                html += '<button onclick="umReject(\'' + umEsc(u.id) + '\')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
+                html += '<button onclick="umApprove(' + Number(u.id) + ')" style="background:#4caf50;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;margin-right:4px;">Approva</button>';
+                html += '<button onclick="umReject(' + Number(u.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Rifiuta</button>';
                 html += '</td></tr>';
             });
             html += '</table>';
@@ -3303,20 +3317,20 @@ def get_viewer_html(role):
                 html += '<tr style="border-bottom:1px solid #333;' + (isSuspended ? 'opacity:0.6;' : '') + '">';
                 html += '<td style="padding:6px 8px;">' + umEsc(u.email) + '</td>';
                 html += '<td style="padding:6px 8px;text-align:center;">';
-                html += '<select onchange="umSetRole(\'' + umEsc(u.id) + '\', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
+                html += '<select onchange="umSetRole(' + Number(u.id) + ', this.value)" style="background:#2a2a4a;color:white;border:1px solid #555;border-radius:4px;padding:2px 4px;">';
                 html += '<option value="iscritto"' + (u.role === 'iscritto' ? ' selected' : '') + '>Iscritto</option>';
                 html += '<option value="editor"' + (u.role === 'editor' ? ' selected' : '') + '>Editor</option>';
                 html += '</select>';
                 html += '</td>';
-                html += '<td style="padding:6px 8px;color:#888;text-align:center;">' + (u.last_login || '—') + '</td>';
+                html += '<td style="padding:6px 8px;color:#888;text-align:center;">' + umEsc(u.last_login || '—') + '</td>';
                 html += '<td style="padding:6px 8px;text-align:center;color:' + (isSuspended ? '#f44336' : '#4caf50') + ';">' + (isSuspended ? 'Sospeso' : 'Attivo') + '</td>';
                 html += '<td style="padding:6px 8px;white-space:nowrap;text-align:center;">';
                 if (isSuspended) {
-                    html += '<button onclick="umSuspend(\'' + umEsc(u.id) + '\', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
+                    html += '<button onclick="umSuspend(' + Number(u.id) + ', false)" style="background:#4caf50;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Riattiva</button>';
                 } else {
-                    html += '<button onclick="umSuspend(\'' + umEsc(u.id) + '\', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
+                    html += '<button onclick="umSuspend(' + Number(u.id) + ', true)" style="background:#ff9800;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;margin-right:4px;">Sospendi</button>';
                 }
-                html += '<button onclick="umDelete(\'' + umEsc(u.id) + '\', \'' + umEsc(u.email) + '\')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
+                html += '<button onclick="umDelete(' + Number(u.id) + ')" style="background:#f44336;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;">Elimina</button>';
                 html += '</td></tr>';
             });
             html += '</table>';
@@ -3363,7 +3377,8 @@ def get_viewer_html(role):
               .catch(function(e) { alert('Errore: ' + e); });
         }
 
-        function umDelete(userId, email) {
+        function umDelete(userId) {
+            var email = umEmailById[userId] || ('utente #' + userId);
             if (!confirm('Eliminare definitivamente ' + email + '?')) return;
             fetch('/api/admin/users?user_id=' + encodeURIComponent(userId), {
                 method: 'DELETE'
