@@ -2107,6 +2107,18 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(items)
             return
 
+        # Lista utenti (admin)
+        if parsed.path == '/api/admin/users':
+            if not self.require_role('admin'):
+                return
+            conn = get_db()
+            try:
+                users = list_users(conn)
+            finally:
+                conn.close()
+            self.send_json({'users': users})
+            return
+
         # Get PDF URL for cross-platform viewing
         if parsed.path.startswith('/api/pdf-url'):
             page = query.get('page', ['1'])[0]
@@ -2337,6 +2349,50 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': False, 'error': 'Email già registrata'}, 409)
             finally:
                 conn.close()
+            return
+
+        # Azioni admin sugli utenti
+        if parsed.path in ('/api/admin/users/approve', '/api/admin/users/reject',
+                           '/api/admin/users/role', '/api/admin/users/suspend',
+                           '/api/admin/users/reset-password'):
+            if not self.require_role('admin'):
+                return
+            user_id = post_data.get('user_id')
+            if not user_id:
+                self.send_json({'error': 'user_id mancante'}, 400)
+                return
+            conn = get_db()
+            try:
+                actor = (get_session(self.headers.get('Cookie')) or {}).get('email') or 'admin'
+                if parsed.path.endswith('/approve'):
+                    ok = set_user_status(conn, user_id, 'approved', approved_by=actor)
+                elif parsed.path.endswith('/reject'):
+                    ok = set_user_status(conn, user_id, 'rejected')
+                elif parsed.path.endswith('/suspend'):
+                    suspend = bool(post_data.get('suspend', True))
+                    ok = set_user_status(conn, user_id, 'suspended' if suspend else 'approved',
+                                         approved_by=None if suspend else actor)
+                elif parsed.path.endswith('/role'):
+                    role = post_data.get('role')
+                    if role not in ('iscritto', 'editor'):
+                        self.send_json({'error': 'Ruolo non valido'}, 400)
+                        return
+                    ok = set_user_role(conn, user_id, role)
+                elif parsed.path.endswith('/reset-password'):
+                    new_pw = post_data.get('new_password') or ''
+                    if len(new_pw) < 8:
+                        self.send_json({'error': 'Password troppo corta'}, 400)
+                        return
+                    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                                 (hash_password_salted(new_pw), user_id))
+                    conn.commit()
+                    ok = conn.total_changes > 0
+            finally:
+                conn.close()
+            if not ok:
+                self.send_json({'error': 'Utente non trovato'}, 404)
+            else:
+                self.send_json({'success': True})
             return
 
         # Logout
@@ -2656,6 +2712,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.send_json({'error': 'Not found'}, 404)
 
     def do_DELETE(self):
+
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
 
@@ -2675,6 +2732,20 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json({'success': True})
             else:
                 self.send_json({'success': False, 'error': 'Delete failed'})
+            return
+
+        # Elimina utente (admin)
+        if parsed.path == '/api/admin/users':
+            user_id = query.get('user_id', [None])[0]
+            if not user_id:
+                self.send_json({'error': 'user_id mancante'}, 400)
+                return
+            conn = get_db()
+            try:
+                ok = delete_user(conn, user_id)
+            finally:
+                conn.close()
+            self.send_json({'success': True} if ok else {'error': 'Utente non trovato'}, 200 if ok else 404)
             return
 
         self.send_json({'error': 'Not found'}, 404)
